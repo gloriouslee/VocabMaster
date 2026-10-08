@@ -4,6 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { MobileNav } from './MobileNav';
+import { TodaySummary } from './TodayCard';
+import { loadDailyPrefs } from '@/lib/dailyPlan';
+import { daysUntil, loadExamGoal } from '@/lib/examGoal';
 import { StorageService } from '@/lib/storage';
 import { UserStats } from '@/types';
 import { clearAuthTokensFromUrl, supabase } from '@/lib/supabase';
@@ -24,6 +27,7 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
   const [stats, setStats] = useState<UserStats | undefined>(undefined);
   const [menuOpen, setMenuOpen] = useState(false);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [today, setToday] = useState<TodaySummary | null>(null);
   const [settingsReady, setSettingsReady] = useState(false);
 
   useEffect(() => {
@@ -44,8 +48,21 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
         // Preferences are synced first so screens read the account's latest values.
         await syncSettingsFromServer().catch(() => undefined);
         if (active) setSettingsReady(true);
-        const nextStats = await StorageService.getUserStats();
+        const [nextStats, activity, dueNow] = await Promise.all([
+          StorageService.getUserStats(),
+          StorageService.getTodayActivity().catch(() => null),
+          StorageService.getDueCount().catch(() => null),
+        ]);
         if (active) {
+          if (activity && dueNow !== null) {
+            const exam = loadExamGoal();
+            setToday({
+              reviewsToday: activity.reviewsToday,
+              dailyGoal: loadDailyPrefs().dailyGoal,
+              dueNow,
+              examDaysLeft: exam ? daysUntil(exam.date) : null,
+            });
+          }
           setStats(nextStats);
           setAuthError(null);
         }
@@ -107,13 +124,13 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
       <div className="hidden shrink-0 md:block sticky top-0 h-screen self-start">
-        <Sidebar />
+        <Sidebar today={today} />
       </div>
       {menuOpen && (
         <div className="fixed inset-0 z-50 md:hidden">
           <button type="button" aria-label="Close menu" onClick={() => setMenuOpen(false)} className="absolute inset-0 bg-slate-900/50" />
           <div className="absolute left-0 top-0 h-full overflow-y-auto">
-            <Sidebar onNavigate={() => setMenuOpen(false)} />
+            <Sidebar today={today} onNavigate={() => setMenuOpen(false)} />
           </div>
         </div>
       )}

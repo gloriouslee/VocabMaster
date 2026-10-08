@@ -302,6 +302,19 @@ export const StorageService = {
     return counts;
   },
 
+  /** Number of already-studied cards that are due for review right now. */
+  async getDueCount(): Promise<number> {
+    const userId = await currentUserId();
+    const { count, error } = await client()
+      .from('vocabularies')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .neq('status', 'new')
+      .lte('next_review_at', new Date().toISOString());
+    if (error) throw error;
+    return count || 0;
+  },
+
   /** Flashcard reviews done since local midnight, and how many of those words were seen for the first time. */
   async getTodayActivity(): Promise<TodayActivity> {
     const userId = await currentUserId();

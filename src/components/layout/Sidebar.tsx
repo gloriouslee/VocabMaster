@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { TodayCard, TodaySummary } from './TodayCard';
 import {
   LayoutDashboard,
   FolderTree,
@@ -11,11 +12,10 @@ import {
   HelpCircle,
   AlertCircle,
   GraduationCap,
-  Sparkles,
   Settings,
 } from 'lucide-react';
 
-export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+export function Sidebar({ onNavigate, today = null }: { onNavigate?: () => void; today?: TodaySummary | null }) {
   const pathname = usePathname();
 
   const navItems = [
@@ -107,16 +107,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       </div>
 
-      {/* Target IELTS Banner */}
-      <div className="p-4 m-3 bg-gradient-to-br from-slate-800 to-slate-850 rounded-xl border border-slate-700/60">
-        <div className="flex items-center gap-2 text-xs font-semibold text-blue-400 mb-1">
-          <Sparkles className="w-4 h-4 text-amber-400" />
-          Target IELTS Band 7.5+
-        </div>
-        <p className="text-[11px] text-slate-400 leading-relaxed">
-          Daily Spaced Repetition builds long-term recall for IELTS Speaking & Writing.
-        </p>
-      </div>
+      <TodayCard today={today} onNavigate={onNavigate} />
     </aside>
   );
 }
