@@ -39,6 +39,27 @@ function mapStudySession(row: StudySessionRow): StudySession {
   };
 }
 
+// PostgREST returns at most 1000 rows per request, so larger tables are read page by page.
+const PAGE_SIZE = 1000;
+
+async function fetchAll<T>(
+  fetchPage: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await fetchPage(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data || data.length < PAGE_SIZE) return rows;
+  }
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const groups: T[][] = [];
+  for (let start = 0; start < items.length; start += size) groups.push(items.slice(start, start + size));
+  return groups;
+}
+
 function client() {
   if (!supabase) {
     throw new Error('Supabase is not configured. Set the public URL and publishable key.');
@@ -206,9 +227,9 @@ export const StorageService = {
 
   async getVocabularies(): Promise<Vocabulary[]> {
     const userId = await currentUserId();
-    const { data, error } = await client().from('vocabularies').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-    if (error) throw error;
-    return data.map(mapVocabulary);
+    const rows = await fetchAll((from, to) =>
+      client().from('vocabularies').select('*').eq('user_id', userId).order('created_at', { ascending: false }).order('id').range(from, to));
+    return rows.map(mapVocabulary);
   },
 
   async addVocabulary(vocab: Omit<Vocabulary, 'id' | 'createdAt' | 'status' | 'nextReviewAt' | 'intervalDays' | 'repetitions' | 'easeFactor'> & Partial<Vocabulary>): Promise<Vocabulary> {
@@ -268,15 +289,13 @@ export const StorageService = {
     const counts = new Map<string, number>();
     if (vocabularyIds && vocabularyIds.length === 0) return counts;
     const userId = await currentUserId();
-    let query = client()
-      .from('review_logs')
-      .select('vocabulary_id')
-      .eq('user_id', userId)
-      .eq('rating', 'forgot');
-    if (vocabularyIds) query = query.in('vocabulary_id', vocabularyIds);
-    const { data, error } = await query;
-    if (error) throw error;
-    for (const row of data) counts.set(row.vocabulary_id, (counts.get(row.vocabulary_id) || 0) + 1);
+    const wanted = vocabularyIds ? new Set(vocabularyIds) : null;
+    const rows = await fetchAll((from, to) =>
+      client().from('review_logs').select('vocabulary_id').eq('user_id', userId).eq('rating', 'forgot').order('id').range(from, to));
+    for (const row of rows) {
+      if (wanted && !wanted.has(row.vocabulary_id)) continue;
+      counts.set(row.vocabulary_id, (counts.get(row.vocabulary_id) || 0) + 1);
+    }
     return counts;
   },
 
@@ -286,25 +305,20 @@ export const StorageService = {
     const midnight = new Date();
     midnight.setHours(0, 0, 0, 0);
     const since = midnight.toISOString();
-    const todayLogs = await client()
-      .from('review_logs')
-      .select('vocabulary_id')
-      .eq('user_id', userId)
-      .gte('reviewed_at', since);
-    if (todayLogs.error) throw todayLogs.error;
-    const todayIds = [...new Set(todayLogs.data.map((row) => row.vocabulary_id))];
+    const todayLogs = await fetchAll((from, to) =>
+      client().from('review_logs').select('vocabulary_id').eq('user_id', userId).gte('reviewed_at', since).order('id').range(from, to));
+    const todayIds = [...new Set(todayLogs.map((row) => row.vocabulary_id))];
     if (todayIds.length === 0) return { reviewsToday: 0, newToday: 0 };
 
-    const earlier = await client()
-      .from('review_logs')
-      .select('vocabulary_id')
-      .eq('user_id', userId)
-      .lt('reviewed_at', since)
-      .in('vocabulary_id', todayIds);
-    if (earlier.error) throw earlier.error;
-    const seenBefore = new Set(earlier.data.map((row) => row.vocabulary_id));
+    // Chunked so the id list never makes the request URL too long.
+    const seenBefore = new Set<string>();
+    await Promise.all(chunk(todayIds, 50).map(async (ids) => {
+      const rows = await fetchAll((from, to) =>
+        client().from('review_logs').select('vocabulary_id').eq('user_id', userId).lt('reviewed_at', since).in('vocabulary_id', ids).order('id').range(from, to));
+      for (const row of rows) seenBefore.add(row.vocabulary_id);
+    }));
     return {
-      reviewsToday: todayLogs.data.length,
+      reviewsToday: todayLogs.length,
       newToday: todayIds.filter((id) => !seenBefore.has(id)).length,
     };
   },
@@ -402,14 +416,15 @@ export const StorageService = {
 
   async getQuizResults(): Promise<QuizResult[]> {
     const userId = await currentUserId();
-    const [results, scopes] = await Promise.all([
-      client().from('quiz_results').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
-      client().from('quiz_result_folders').select('quiz_result_id,folder_id').eq('user_id', userId),
+    const [resultRows, scopeRows] = await Promise.all([
+      fetchAll((from, to) =>
+        client().from('quiz_results').select('*').eq('user_id', userId).order('created_at', { ascending: false }).order('id').range(from, to)),
+      fetchAll((from, to) =>
+        client().from('quiz_result_folders').select('quiz_result_id,folder_id').eq('user_id', userId).order('quiz_result_id').order('folder_id').range(from, to)),
     ]);
-    if (results.error) throw results.error;
-    if (scopes.error) throw scopes.error;
+    const results = { data: resultRows };
     const folderIds = new Map<string, string[]>();
-    for (const scope of scopes.data) {
+    for (const scope of scopeRows) {
       folderIds.set(scope.quiz_result_id, [...(folderIds.get(scope.quiz_result_id) || []), scope.folder_id]);
     }
     return results.data.map((row) => mapQuizResult(row, folderIds.get(row.id) || []));
@@ -439,9 +454,9 @@ export const StorageService = {
 
   async getMistakeLogs(): Promise<MistakeLog[]> {
     const userId = await currentUserId();
-    const { data, error } = await client().from('mistake_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-    if (error) throw error;
-    return data.map(mapMistake);
+    const rows = await fetchAll((from, to) =>
+      client().from('mistake_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false }).order('id').range(from, to));
+    return rows.map(mapMistake);
   },
 
   async addMistakeLog(log: Omit<MistakeLog, 'id' | 'createdAt' | 'resolved'>): Promise<MistakeLog> {
@@ -467,12 +482,12 @@ export const StorageService = {
 
   async getUserStats(): Promise<UserStats> {
     const userId = await currentUserId();
-    const [reviews, quizzes] = await Promise.all([
-      client().from('review_logs').select('reviewed_at').eq('user_id', userId),
-      client().from('quiz_results').select('created_at,total_questions').eq('user_id', userId),
+    const [reviewRows, quizRows] = await Promise.all([
+      fetchAll((from, to) => client().from('review_logs').select('reviewed_at').eq('user_id', userId).order('id').range(from, to)),
+      fetchAll((from, to) => client().from('quiz_results').select('created_at,total_questions').eq('user_id', userId).order('id').range(from, to)),
     ]);
-    if (reviews.error) throw reviews.error;
-    if (quizzes.error) throw quizzes.error;
+    const reviews = { data: reviewRows };
+    const quizzes = { data: quizRows };
 
     const today = localDayKey(new Date());
     const reviewDates = reviews.data.map((row) => dayKey(row.reviewed_at));
