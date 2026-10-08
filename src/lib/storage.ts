@@ -3,6 +3,9 @@ import type { Database, Tables, TablesInsert, TablesUpdate } from '@/types/datab
 import { Folder, Vocabulary, QuizResult, MistakeLog, UserStats, WordType } from '@/types';
 import { Rating, scheduleReview } from './spacedRepetition';
 import type { TodayActivity } from './dailyPlan';
+import { normalizeWord } from './normalizeWord';
+import { Backup, orderFoldersParentFirst } from './backup';
+import { STARTER_PACK } from './starterPack';
 
 type FolderRow = Tables<'folders'>;
 type VocabularyRow = Tables<'vocabularies'>;
@@ -358,6 +361,58 @@ export const StorageService = {
       }));
     }
     return missed.length;
+  },
+
+  /** Adds the built-in starter words (skipping any word already in the library). */
+  async importStarterPack(): Promise<{ added: number; skipped: number }> {
+    const [folders, words] = await Promise.all([this.getFolders(), this.getVocabularies()]);
+    const known = new Set(words.map((word) => normalizeWord(word.word)));
+    let added = 0;
+    let skipped = 0;
+    for (const topic of STARTER_PACK) {
+      const existing = folders.find((folder) => folder.parentId === null && folder.name.toLocaleLowerCase() === topic.folder.toLocaleLowerCase());
+      const folder = existing || await this.saveFolder({ name: topic.folder, parentId: null });
+      const fresh = topic.words.filter((word) => !known.has(normalizeWord(word.word)));
+      skipped += topic.words.length - fresh.length;
+      if (fresh.length === 0) continue;
+      await this.bulkAddVocabularies(fresh.map((word) => ({ ...word, phonetic: '', folderId: folder.id })));
+      fresh.forEach((word) => known.add(normalizeWord(word.word)));
+      added += fresh.length;
+    }
+    return { added, skipped };
+  },
+
+  /** Restores a backup file additively: folders are matched by name and words already present are skipped. */
+  async restoreBackup(backup: Backup): Promise<{ foldersCreated: number; added: number; skipped: number }> {
+    const [folders, words] = await Promise.all([this.getFolders(), this.getVocabularies()]);
+    const idMap = new Map<string, string>();
+    let foldersCreated = 0;
+    const current = [...folders];
+    for (const folder of orderFoldersParentFirst(backup.folders)) {
+      const parentId = folder.parentId ? idMap.get(folder.parentId) ?? null : null;
+      const existing = current.find((item) => item.parentId === parentId && item.name.toLocaleLowerCase() === folder.name.toLocaleLowerCase());
+      if (existing) {
+        idMap.set(folder.id, existing.id);
+        continue;
+      }
+      const created = await this.saveFolder({ name: folder.name, parentId });
+      current.push(created);
+      idMap.set(folder.id, created.id);
+      foldersCreated += 1;
+    }
+
+    const keyOf = (word: string, folderId: string | null) => `${normalizeWord(word)}|${folderId ?? ''}`;
+    const known = new Set(words.map((word) => keyOf(word.word, word.folderId)));
+    const fresh = backup.vocabularies
+      .map((word) => ({ ...word, folderId: word.folderId ? idMap.get(word.folderId) ?? null : null }))
+      .filter((word) => {
+        const key = keyOf(word.word, word.folderId);
+        if (known.has(key)) return false;
+        known.add(key);
+        return true;
+      });
+    for (const group of chunk(fresh, 200)) await this.bulkAddVocabularies(group);
+    return { foldersCreated, added: fresh.length, skipped: backup.vocabularies.length - fresh.length };
   },
 
   async getActiveStudySession(): Promise<StudySession | null> {
