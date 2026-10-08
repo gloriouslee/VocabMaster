@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import type { Database, Tables, TablesInsert, TablesUpdate } from '@/types/database';
 import { Folder, Vocabulary, QuizResult, MistakeLog, UserStats, WordType } from '@/types';
-import { Rating } from './spacedRepetition';
+import { Rating, scheduleReview } from './spacedRepetition';
 import type { TodayActivity } from './dailyPlan';
 
 type FolderRow = Tables<'folders'>;
@@ -319,6 +319,30 @@ export const StorageService = {
         return this.updateVocabulary(id, { nextReviewAt: new Date(now + dayOffset * dayMs).toISOString() });
       }));
     }
+  },
+
+  /**
+   * A word missed in a quiz is treated like a flashcard lapse: it is due again now and
+   * its ease drops. New (never studied) words are left alone.
+   */
+  async applyQuizLapses(words: Vocabulary[]): Promise<number> {
+    const missed = words.filter((word) => word.status !== 'new');
+    for (let start = 0; start < missed.length; start += 10) {
+      await Promise.all(missed.slice(start, start + 10).map((word) => {
+        const next = scheduleReview(
+          { intervalDays: word.intervalDays || 0, repetitions: word.repetitions || 0, easeFactor: word.easeFactor || 2.5 },
+          'forgot',
+        );
+        return this.updateVocabulary(word.id, {
+          nextReviewAt: new Date().toISOString(),
+          intervalDays: next.intervalDays,
+          repetitions: next.repetitions,
+          easeFactor: next.easeFactor,
+          status: next.status,
+        });
+      }));
+    }
+    return missed.length;
   },
 
   async getActiveStudySession(): Promise<StudySession | null> {

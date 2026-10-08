@@ -2,131 +2,225 @@
 
 import React, { useState, useEffect } from 'react';
 import { Shell } from '@/components/layout/Shell';
-import { QuizConfig } from '@/components/quiz/QuizConfig';
-import { QuizSession, QuizQuestion } from '@/components/quiz/QuizSession';
+import { QuizConfig, QuizOptions, QuizPrefs } from '@/components/quiz/QuizConfig';
+import { QuizSession } from '@/components/quiz/QuizSession';
 import { QuizSummary } from '@/components/quiz/QuizSummary';
 import { StorageService } from '@/lib/storage';
-import { Folder, Vocabulary } from '@/types';
+import { Folder, MistakeLog, QuizResult, Vocabulary } from '@/types';
+import {
+  QuizAnswer,
+  QuizFormat,
+  QuizQuestion,
+  QuizSource,
+  WeaknessInfo,
+  buildQuiz,
+  dedupeWords,
+  minimumWords,
+} from '@/lib/quizBuilder';
 import { shuffle } from '@/lib/shuffle';
+
+const SESSION_KEY = 'vocabmaster.quizSession';
+const PREFS_KEY = 'vocabmaster.quizPrefs';
+const DEFAULT_PREFS: QuizPrefs = { count: 10, source: 'random', format: 'mixed' };
+const SOURCES: QuizSource[] = ['random', 'weak', 'due', 'mastered'];
+const FORMATS: QuizFormat[] = ['mixed', 'mcq', 'reverse', 'cloze', 'typing', 'listening'];
+
+interface QuizSnapshot {
+  questions: QuizQuestion[];
+  answers: Array<{ questionId: string; selectedAnswer: string; isCorrect: boolean }>;
+  folderIds: string[];
+  startedAt: number;
+}
+
+const toSnapshotAnswers = (answers: QuizAnswer[]) =>
+  answers.map((answer) => ({ questionId: answer.question.id, selectedAnswer: answer.selectedAnswer, isCorrect: answer.isCorrect }));
+
+function readSnapshot(words: Vocabulary[]): QuizSnapshot | null {
+  try {
+    const saved = JSON.parse(window.localStorage.getItem(SESSION_KEY) || 'null') as QuizSnapshot | null;
+    if (!saved || !Array.isArray(saved.questions) || !Array.isArray(saved.answers)) return null;
+    // Drop questions about words that were deleted since the quiz was saved.
+    const existing = new Set(words.map((word) => word.id));
+    const questions = saved.questions.filter((question) => existing.has(question.vocab.id));
+    const keptIds = new Set(questions.map((question) => question.id));
+    const answers = saved.answers.filter((answer) => keptIds.has(answer.questionId));
+    if (questions.length === 0 || answers.length >= questions.length) return null;
+    return { ...saved, questions, answers };
+  } catch {
+    return null;
+  }
+}
 
 export default function QuizPage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [vocabularies, setVocabularies] = useState<Vocabulary[]>([]);
-  const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
+  const [history, setHistory] = useState<QuizResult[]>([]);
+  const [mistakes, setMistakes] = useState<MistakeLog[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [prefs, setPrefs] = useState<QuizPrefs>(DEFAULT_PREFS);
+  const [prefsReady, setPrefsReady] = useState(false);
+
   const [step, setStep] = useState<'config' | 'session' | 'summary'>('config');
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [userAnswers, setUserAnswers] = useState<
-    Array<{ question: QuizQuestion; selectedAnswer: string; isCorrect: boolean }>
-  >([]);
+  const [initialAnswers, setInitialAnswers] = useState<QuizAnswer[]>([]);
+  const [folderIds, setFolderIds] = useState<string[]>([]);
+  const [isPractice, setIsPractice] = useState(false);
+  const [startedAt, setStartedAt] = useState(Date.now());
+  const [snapshot, setSnapshot] = useState<QuizSnapshot | null>(null);
+
+  const [finalAnswers, setFinalAnswers] = useState<QuizAnswer[]>([]);
+  const [previousScore, setPreviousScore] = useState<number | null>(null);
+  const [elapsedMs, setElapsedMs] = useState(0);
+  const [scheduleNote, setScheduleNote] = useState<string | null>(null);
 
   useEffect(() => {
-    void Promise.all([StorageService.getFolders(), StorageService.getVocabularies()])
-      .then(([nextFolders, words]) => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(PREFS_KEY) || 'null');
+      if (saved && SOURCES.includes(saved.source) && FORMATS.includes(saved.format) && typeof saved.count === 'number') {
+        setPrefs({ count: saved.count, source: saved.source, format: saved.format });
+      }
+    } catch {
+      // Keep defaults when saved preferences cannot be read.
+    }
+    setPrefsReady(true);
+
+    void Promise.all([
+      StorageService.getFolders(),
+      StorageService.getVocabularies(),
+      StorageService.getQuizResults().catch(() => [] as QuizResult[]),
+      StorageService.getMistakeLogs().catch(() => [] as MistakeLog[]),
+    ])
+      .then(([nextFolders, words, results, mistakeLogs]) => {
         setFolders(nextFolders);
         setVocabularies(words);
+        setHistory(results);
+        setMistakes(mistakeLogs);
+        setSnapshot(readSnapshot(words));
       })
       .catch((error) => setLoadError(error instanceof Error ? error.message : 'Unable to load quiz data.'))
       .finally(() => setIsLoading(false));
   }, []);
 
-  const handleStartQuiz = (
-    selectedFolderIds: string[] | null,
-    questionCount: number,
-    mode: 'mixed' | 'mcq' | 'reverse'
-  ) => {
-    setSelectedFolderIds(selectedFolderIds || []);
-    let pool = [...vocabularies];
-    if (selectedFolderIds && selectedFolderIds.length > 0) {
-      const folderSet = new Set(selectedFolderIds);
-      pool = pool.filter((v) => v.folderId && folderSet.has(v.folderId));
-    }
+  const persistSnapshot = (next: QuizSnapshot | null) => {
+    setSnapshot(next);
+    if (next) window.localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+    else window.localStorage.removeItem(SESSION_KEY);
+  };
 
-    const seenWords = new Set<string>();
-    pool = pool.filter((v) => {
-      const normalizedWord = v.word.normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase();
-      if (seenWords.has(normalizedWord)) return false;
-      seenWords.add(normalizedWord);
-      return true;
-    });
-
-    if (pool.length < 4) {
-      alert('You need at least 4 vocabulary words in the selected scope to generate a quiz with multiple choice options.');
-      return;
-    }
-
-    // Pick target words randomly
-    const shuffledPool = shuffle(pool);
-    const targetVocabs = shuffledPool.slice(0, Math.min(questionCount, pool.length));
-
-    const generatedQuestions: QuizQuestion[] = targetVocabs.map((vocab, index) => {
-      let qType: 'mcq' | 'reverse' = 'mcq';
-      if (mode === 'reverse') qType = 'reverse';
-      else if (mode === 'mixed') qType = index % 2 === 0 ? 'mcq' : 'reverse';
-
-      if (qType === 'mcq') {
-        const distractors = [...new Map(
-          shuffle(pool.filter((v) => v.id !== vocab.id))
-            .map((item) => [item.meaning.trim().toLocaleLowerCase(), item.meaning.trim()] as const)
-            .filter(([key]) => key && key !== vocab.meaning.trim().toLocaleLowerCase())
-        ).values()].slice(0, 3);
-        const options = shuffle([vocab.meaning, ...distractors]);
-        return {
-          id: `q-${index}`,
-          type: 'mcq',
-          prompt: vocab.word,
-          subPrompt: vocab.phonetic,
-          correctAnswer: vocab.meaning,
-          options,
-          vocab,
-        };
-      } else {
-        const distractors = [...new Map(
-          shuffle(pool.filter((v) => v.id !== vocab.id))
-            .map((item) => [item.word.trim().toLocaleLowerCase(), item.word.trim()] as const)
-            .filter(([key]) => key && key !== vocab.word.trim().toLocaleLowerCase())
-        ).values()].slice(0, 3);
-        const options = shuffle([vocab.word, ...distractors]);
-        return {
-          id: `q-${index}`,
-          type: 'reverse',
-          prompt: vocab.meaning,
-          correctAnswer: vocab.word,
-          options,
-          vocab,
-        };
-      }
-    });
-
-    setQuestions(generatedQuestions);
+  const beginSession = (nextQuestions: QuizQuestion[], answers: QuizAnswer[], practice: boolean, ids: string[], started: number) => {
+    setQuestions(nextQuestions);
+    setInitialAnswers(answers);
+    setIsPractice(practice);
+    setFolderIds(ids);
+    setStartedAt(started);
     setStep('session');
   };
 
-  const handleCompleteQuiz = async (
-    answers: Array<{ question: QuizQuestion; selectedAnswer: string; isCorrect: boolean }>
-  ): Promise<void> => {
-    const correctCount = answers.filter((a) => a.isCorrect).length;
-    const wrongCount = answers.length - correctCount;
-    const scorePercent = answers.length > 0 ? Math.round((correctCount / answers.length) * 100) : 0;
+  const handleStartQuiz = async (options: QuizOptions) => {
+    setMessage(null);
+    window.localStorage.setItem(PREFS_KEY, JSON.stringify({ count: options.count, source: options.source, format: options.format }));
+    setPrefs({ count: options.count, source: options.source, format: options.format });
 
-    const mistakes = answers.filter((ans) => !ans.isCorrect).map((ans) => ({
-      vocabularyId: ans.question.vocab.id,
-      word: ans.question.vocab.word,
-      meaning: ans.question.vocab.meaning,
-      userAnswer: ans.selectedAnswer,
-      correctAnswer: ans.question.correctAnswer,
-    }));
+    const scopeSet = options.scopeFolderIds ? new Set(options.scopeFolderIds) : null;
+    const scope = dedupeWords(vocabularies.filter((word) => !scopeSet || (word.folderId !== null && scopeSet.has(word.folderId))));
+    if (scope.length < minimumWords(options.format)) {
+      setMessage('You need at least 4 unique words in the selected scope for multiple-choice questions.');
+      return;
+    }
 
-    await StorageService.saveQuizResult({
-      scorePercent,
-      totalQuestions: answers.length,
-      correctCount,
-      wrongCount,
-      folderIds: selectedFolderIds,
-    }, mistakes);
-    setUserAnswers(answers);
+    const info: WeaknessInfo = { lapses: new Map(), mistakes: new Map() };
+    if (options.source === 'weak') {
+      for (const log of mistakes) {
+        if (!log.resolved && log.vocabularyId) info.mistakes.set(log.vocabularyId, (info.mistakes.get(log.vocabularyId) || 0) + 1);
+      }
+      info.lapses = await StorageService.getLapseCounts(scope.map((word) => word.id)).catch(() => new Map<string, number>());
+    }
+
+    const generated = buildQuiz(scope, { count: options.count, source: options.source, format: options.format }, info);
+    if (generated.length === 0) {
+      setMessage(
+        options.source === 'weak'
+          ? 'No weak words found in this scope. Great job! Try random words or check mastered words.'
+          : 'No words match this quiz setup. Try another word source.',
+      );
+      return;
+    }
+
+    const started = Date.now();
+    persistSnapshot({ questions: generated, answers: [], folderIds: options.folderIds, startedAt: started });
+    beginSession(generated, [], false, options.folderIds, started);
+  };
+
+  const handleResume = () => {
+    if (!snapshot) return;
+    const byId = new Map(snapshot.questions.map((question) => [question.id, question]));
+    const answers = snapshot.answers.flatMap((answer) => {
+      const question = byId.get(answer.questionId);
+      return question ? [{ question, selectedAnswer: answer.selectedAnswer, isCorrect: answer.isCorrect }] : [];
+    });
+    beginSession(snapshot.questions, answers, false, snapshot.folderIds, snapshot.startedAt);
+  };
+
+  const handleProgress = (answers: QuizAnswer[]) => {
+    if (isPractice) return;
+    persistSnapshot({ questions, answers: toSnapshotAnswers(answers), folderIds, startedAt });
+  };
+
+  const handleExit = () => {
+    setStep('config');
+  };
+
+  const handleCompleteQuiz = async (answers: QuizAnswer[]): Promise<void> => {
+    const correctCount = answers.filter((answer) => answer.isCorrect).length;
+    const wrong = answers.filter((answer) => !answer.isCorrect);
+    setElapsedMs(Date.now() - startedAt);
+    setPreviousScore(history[0]?.scorePercent ?? null);
+
+    if (!isPractice) {
+      const result = await StorageService.saveQuizResult({
+        scorePercent: answers.length > 0 ? Math.round((correctCount / answers.length) * 100) : 0,
+        totalQuestions: answers.length,
+        correctCount,
+        wrongCount: wrong.length,
+        folderIds,
+      }, wrong.map((answer) => ({
+        vocabularyId: answer.question.vocab.id,
+        word: answer.question.vocab.word,
+        meaning: answer.question.vocab.meaning,
+        userAnswer: answer.selectedAnswer,
+        correctAnswer: answer.question.correctAnswer,
+      })));
+      persistSnapshot(null);
+      setHistory((current) => [result, ...current]);
+
+      // Rescheduling is best effort: the quiz result is already saved.
+      const uniqueMissed = [...new Map(wrong.map((answer) => [answer.question.vocab.id, answer.question.vocab])).values()];
+      try {
+        const rescheduled = await StorageService.applyQuizLapses(uniqueMissed);
+        setScheduleNote(rescheduled > 0
+          ? `${rescheduled} missed ${rescheduled === 1 ? 'word is' : 'words are'} due for review today in your flashcards.`
+          : null);
+        if (rescheduled > 0) setVocabularies(await StorageService.getVocabularies());
+      } catch {
+        setScheduleNote('Your result was saved, but missed words could not be rescheduled for review.');
+      }
+    } else {
+      setScheduleNote(null);
+    }
+
+    setFinalAnswers(answers);
     setStep('summary');
+  };
+
+  const handleRetryWrong = () => {
+    const missed = finalAnswers.filter((answer) => !answer.isCorrect).map((answer, index) => ({
+      ...answer.question,
+      id: `retry-${index}`,
+      options: shuffle(answer.question.options),
+    }));
+    beginSession(missed, [], true, folderIds, Date.now());
   };
 
   return (
@@ -134,31 +228,49 @@ export default function QuizPage() {
       <div className="space-y-6">
         {loadError && <p role="alert" className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{loadError}</p>}
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            IELTS Vocabulary Quiz
-          </h1>
+          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">IELTS Vocabulary Quiz</h1>
           <p className="text-xs text-slate-500 mt-1">
-            Evaluate your active recall memory with interactive Multiple Choice & Reverse Translation tests.
+            Check your active recall with choice, listening, fill-in-the-blank and typing questions.
           </p>
         </div>
 
         {step === 'config' && (
           <QuizConfig
+            key={String(prefsReady)}
             folders={folders}
             vocabularies={vocabularies}
             isLoading={isLoading}
-            onStartQuiz={handleStartQuiz}
+            message={message}
+            history={history}
+            resume={snapshot ? { answered: snapshot.answers.length, total: snapshot.questions.length } : null}
+            initialPrefs={prefs}
+            onResume={handleResume}
+            onDiscardResume={() => persistSnapshot(null)}
+            onStartQuiz={(options) => void handleStartQuiz(options)}
           />
         )}
 
         {step === 'session' && (
-          <QuizSession questions={questions} onComplete={handleCompleteQuiz} />
+          <QuizSession
+            key={`${isPractice}-${startedAt}`}
+            questions={questions}
+            initialAnswers={initialAnswers}
+            onProgress={handleProgress}
+            onComplete={handleCompleteQuiz}
+            onExit={handleExit}
+          />
         )}
 
         {step === 'summary' && (
           <QuizSummary
-            userAnswers={userAnswers}
+            userAnswers={finalAnswers}
+            folders={folders}
+            previousScore={previousScore}
+            elapsedMs={elapsedMs}
+            isPractice={isPractice}
+            scheduleNote={scheduleNote}
             onRetakeQuiz={() => setStep('config')}
+            onRetryWrong={handleRetryWrong}
           />
         )}
       </div>
