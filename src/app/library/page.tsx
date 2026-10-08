@@ -8,6 +8,7 @@ import { FolderTree } from '@/components/library/FolderTree';
 import { VocabTable } from '@/components/library/VocabTable';
 import { VocabModal } from '@/components/library/VocabModal';
 import { StorageService } from '@/lib/storage';
+import { getFolderScopeIds } from '@/lib/folderScope';
 import { Folder, Vocabulary } from '@/types';
 
 export default function LibraryPage() {
@@ -20,13 +21,20 @@ export default function LibraryPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVocab, setEditingVocab] = useState<Vocabulary | null>(null);
 
+  // Counts include words in subfolders so a parent folder matches what it shows when selected.
   const folderWordCounts = useMemo(() => {
-    const counts = new Map<string, number>();
+    const direct = new Map<string, number>();
     for (const word of vocabularies) {
-      if (word.folderId) counts.set(word.folderId, (counts.get(word.folderId) || 0) + 1);
+      if (word.folderId) direct.set(word.folderId, (direct.get(word.folderId) || 0) + 1);
+    }
+    const counts = new Map<string, number>();
+    for (const folder of folders) {
+      let total = 0;
+      for (const id of getFolderScopeIds(folders, folder.id)) total += direct.get(id) || 0;
+      counts.set(folder.id, total);
     }
     return counts;
-  }, [vocabularies]);
+  }, [vocabularies, folders]);
   const dueCount = vocabularies.filter((word) => new Date(word.nextReviewAt).getTime() <= Date.now()).length;
   const masteredCount = vocabularies.filter((word) => word.status === 'mastered').length;
 
@@ -130,6 +138,9 @@ export default function LibraryPage() {
             <p className="mt-1 text-sm text-slate-500">Keep words organized, review due cards, and grow your vocabulary.</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <Link href="/study" className="inline-flex items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50 px-4 py-2.5 text-sm font-semibold text-blue-700 shadow-sm transition hover:bg-blue-100">
+              <Clock3 className="h-4 w-4" /> Review {dueCount} due
+            </Link>
             <Link href="/import" className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
               <Upload className="h-4 w-4" /> Import words
             </Link>
@@ -154,7 +165,7 @@ export default function LibraryPage() {
           </div>
         </section>
 
-        <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[230px_minmax(0,1fr)]">
+        <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
           <details className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:hidden">
             <summary className="cursor-pointer list-none text-sm font-semibold text-slate-800">
               Topics <span className="ml-1 font-normal text-slate-500">({folders.length}) · {selectedFolderId ? folders.find((folder) => folder.id === selectedFolderId)?.name || 'All topics' : 'All topics'}</span>

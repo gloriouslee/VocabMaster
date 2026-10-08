@@ -11,19 +11,10 @@ import {
   HelpCircle,
   AlertCircle,
   GraduationCap,
-  Sparkles,
-  ChevronRight,
-  BookOpen
+  Sparkles
 } from 'lucide-react';
-import { Folder } from '@/types';
 
-interface SidebarProps {
-  folders: Folder[];
-  currentFolderId?: string;
-  onSelectFolder?: (id: string | undefined) => void;
-}
-
-export function Sidebar({ folders, currentFolderId, onSelectFolder }: SidebarProps) {
+export function Sidebar() {
   const pathname = usePathname();
 
   const navItems = [
@@ -64,8 +55,6 @@ export function Sidebar({ folders, currentFolderId, onSelectFolder }: SidebarPro
       active: pathname === '/mistakes',
     },
   ];
-
-  const rootFolders = folders.filter((f) => !f.parentId);
 
   return (
     <aside className="w-64 bg-slate-900 text-slate-100 flex flex-col min-h-screen border-r border-slate-800 shadow-xl">
@@ -108,79 +97,6 @@ export function Sidebar({ folders, currentFolderId, onSelectFolder }: SidebarPro
               );
             })}
           </nav>
-        </div>
-
-        {/* Quick Folders Navigation */}
-        <div>
-          <div className="flex items-center justify-between px-3 mb-2">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-              Categories
-            </p>
-            <Link
-              href="/library"
-              className="text-xs text-blue-400 hover:text-blue-300 font-medium transition-colors"
-            >
-              Manage
-            </Link>
-          </div>
-          <div className="space-y-1">
-            <button
-              onClick={() => onSelectFolder && onSelectFolder(undefined)}
-              className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium text-left transition-colors ${
-                !currentFolderId && pathname === '/library'
-                  ? 'bg-slate-800 text-blue-400 font-semibold'
-                  : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-              }`}
-            >
-              <span className="flex items-center gap-2">
-                <BookOpen className="w-3.5 h-3.5" />
-                All Library Topics
-              </span>
-            </button>
-            {rootFolders.map((rf) => {
-              const subfolders = folders.filter((f) => f.parentId === rf.id);
-              const isSelected = currentFolderId === rf.id;
-
-              return (
-                <div key={rf.id} className="space-y-0.5">
-                  <button
-                    onClick={() => onSelectFolder && onSelectFolder(rf.id)}
-                    className={`w-full flex items-center justify-between px-3 py-1.5 rounded-lg text-xs font-medium text-left transition-colors ${
-                      isSelected
-                        ? 'bg-slate-800 text-blue-400 font-semibold'
-                        : 'text-slate-300 hover:bg-slate-800/50 hover:text-slate-100'
-                    }`}
-                  >
-                    <span className="flex items-center gap-2 truncate">
-                      <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                      {rf.name}
-                    </span>
-                    {subfolders.length > 0 && (
-                      <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">
-                        {subfolders.length}
-                      </span>
-                    )}
-                  </button>
-                  {subfolders.map((sf) => (
-                    <button
-                      key={sf.id}
-                      onClick={() => onSelectFolder && onSelectFolder(sf.id)}
-                      className={`w-full flex items-center justify-between pl-7 pr-3 py-1 rounded-md text-[11px] text-left transition-colors ${
-                        currentFolderId === sf.id
-                          ? 'text-blue-400 font-semibold bg-slate-800/60'
-                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/30'
-                      }`}
-                    >
-                      <span className="truncate flex items-center gap-1">
-                        <ChevronRight className="w-3 h-3 text-slate-600" />
-                        {sf.name}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
         </div>
       </div>
 

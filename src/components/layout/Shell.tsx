@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { StorageService } from '@/lib/storage';
-import { Folder, UserStats } from '@/types';
+import { UserStats } from '@/types';
 import { clearAuthTokensFromUrl, supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
@@ -18,7 +18,6 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
   const [authReady, setAuthReady] = useState(false);
   const [authError, setAuthError] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
-  const [folders, setFolders] = useState<Folder[]>([]);
   const [stats, setStats] = useState<UserStats | undefined>(undefined);
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -33,17 +32,12 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
     const loadUserData = async (email: string | null) => {
       setUserEmail(email);
       if (!email) {
-        setFolders([]);
         setStats(undefined);
         return;
       }
       try {
-        const [nextFolders, nextStats] = await Promise.all([
-          StorageService.getFolders(),
-          StorageService.getUserStats(),
-        ]);
+        const nextStats = await StorageService.getUserStats();
         if (active) {
-          setFolders(nextFolders);
           setStats(nextStats);
           setAuthError(null);
         }
@@ -88,7 +82,7 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
         <div className="w-64 bg-slate-900 text-slate-100 min-h-screen" />
         <div className="flex-1 flex flex-col min-w-0">
           <header className="h-16 bg-white border-b border-slate-200" />
-          <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto" />
+          <main className="flex-1 p-6 md:p-8 max-w-[1600px] w-full mx-auto" />
         </div>
       </div>
     );
@@ -100,10 +94,10 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
-      <Sidebar folders={folders} />
+      <Sidebar />
       <div className="flex-1 flex flex-col min-w-0">
         <Header stats={stats} userEmail={userEmail} onSignOut={handleSignOut} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
-        <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto">{children}</main>
+        <main className="flex-1 p-6 md:p-8 max-w-[1600px] w-full mx-auto">{children}</main>
       </div>
     </div>
   );

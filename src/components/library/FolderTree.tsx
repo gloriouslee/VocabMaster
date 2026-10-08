@@ -304,7 +304,7 @@ export function FolderTree({
       )}
 
       {/* Folder Hierarchy */}
-      <div className="space-y-1">
+      <div className="max-h-[60vh] space-y-1 overflow-y-auto pr-1">
         {rootFolders.length === 0 && !isCreatingRoot && (
           <p className="px-3 py-3 text-xs leading-relaxed text-slate-500">No topics yet. Create a folder to group related words.</p>
         )}
