@@ -4,38 +4,38 @@ import React, { useState } from 'react';
 import {
   Volume2,
   Eye,
-  RotateCcw,
-  Sparkles,
   Award,
-  CheckCircle2,
-  Clock,
-  ArrowRight
+  Pause,
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Vocabulary } from '@/types';
 import { Rating } from '@/lib/spacedRepetition';
+import { StudySession } from '@/lib/storage';
 
 interface FlashcardDeckProps {
   vocabularies: Vocabulary[];
-  onRecordRating: (vocabId: string, rating: Rating) => Promise<void>;
-  onFinishSession: () => void;
+  session: StudySession;
+  onRecordRating: (vocabId: string, rating: Rating) => Promise<StudySession>;
+  onFinishSession: () => Promise<void>;
+  onPauseSession: () => void;
 }
 
 export function FlashcardDeck({
   vocabularies,
+  session,
   onRecordRating,
   onFinishSession,
+  onPauseSession,
 }: FlashcardDeckProps) {
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(session.currentIndex);
   const [showAnswer, setShowAnswer] = useState(false);
-  const [completedCount, setCompletedCount] = useState(0);
+  const [completedCount, setCompletedCount] = useState(
+    Object.values(session.ratingCounts).reduce((sum, count) => sum + count, 0),
+  );
   const [isSaving, setIsSaving] = useState(false);
-  const [ratingStats, setRatingStats] = useState({
-    forgot: 0,
-    hard: 0,
-    good: 0,
-    easy: 0,
-  });
+  const [isFinishing, setIsFinishing] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
+  const [ratingStats, setRatingStats] = useState(session.ratingCounts);
 
   const currentVocab = vocabularies[currentIndex];
   const isFinished = currentIndex >= vocabularies.length;
@@ -54,16 +54,15 @@ export function FlashcardDeck({
 
     setIsSaving(true);
     try {
-      await onRecordRating(currentVocab.id, rating);
+      const updatedSession = await onRecordRating(currentVocab.id, rating);
+      setRatingStats(updatedSession.ratingCounts);
+      setCompletedCount(Object.values(updatedSession.ratingCounts).reduce((sum, count) => sum + count, 0));
     } catch (error) {
       alert(error instanceof Error ? error.message : 'Unable to save review.');
       return;
     } finally {
       setIsSaving(false);
     }
-
-    setRatingStats((prev) => ({ ...prev, [rating]: prev[rating] + 1 }));
-    setCompletedCount((prev) => prev + 1);
 
     setShowAnswer(false);
 
@@ -76,6 +75,17 @@ export function FlashcardDeck({
     }
 
     setCurrentIndex((prev) => prev + 1);
+  };
+
+  const handleFinish = async () => {
+    setIsFinishing(true);
+    setFinishError(null);
+    try {
+      await onFinishSession();
+    } catch (error) {
+      setFinishError(error instanceof Error ? error.message : 'Unable to close the saved study session.');
+      setIsFinishing(false);
+    }
   };
 
   if (isFinished || vocabularies.length === 0) {
@@ -112,11 +122,13 @@ export function FlashcardDeck({
         </div>
 
         <button
-          onClick={onFinishSession}
+          onClick={() => void handleFinish()}
+          disabled={isFinishing}
           className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl text-xs transition-colors shadow-sm"
         >
-          Return to Dashboard
+          {isFinishing ? 'Saving…' : 'Return to Dashboard'}
         </button>
+        {finishError && <p role="alert" className="text-sm text-rose-700">{finishError}</p>}
       </div>
     );
   }
@@ -135,6 +147,16 @@ export function FlashcardDeck({
         <span className="text-xs font-bold px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-100">
           {progressPercent}% Session
         </span>
+        <button
+          type="button"
+          onClick={onPauseSession}
+          disabled={isSaving}
+          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-slate-100 hover:text-slate-800 disabled:opacity-50"
+          title="Your progress is saved after every rating"
+        >
+          <Pause className="h-3.5 w-3.5" />
+          Pause & Exit
+        </button>
       </div>
 
       {/* Progress Bar */}

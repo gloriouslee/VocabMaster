@@ -191,6 +191,36 @@ export type Database = {
           },
         ]
       }
+      study_sessions: {
+        Row: {
+          created_at: string
+          current_index: number
+          id: string
+          rating_counts: Json
+          updated_at: string
+          user_id: string
+          vocabulary_ids: string[]
+        }
+        Insert: {
+          created_at?: string
+          current_index?: number
+          id?: string
+          rating_counts?: Json
+          updated_at?: string
+          user_id: string
+          vocabulary_ids: string[]
+        }
+        Update: {
+          created_at?: string
+          current_index?: number
+          id?: string
+          rating_counts?: Json
+          updated_at?: string
+          user_id?: string
+          vocabulary_ids?: string[]
+        }
+        Relationships: []
+      }
       vocabularies: {
         Row: {
           created_at: string
@@ -316,6 +346,30 @@ export type Database = {
         SetofOptions: {
           from: "*"
           to: "vocabularies"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      start_study_session: {
+        Args: { p_vocabulary_ids: string[] }
+        Returns: Database["public"]["Tables"]["study_sessions"]["Row"]
+        SetofOptions: {
+          from: "study_sessions"
+          to: "study_sessions"
+          isOneToOne: true
+          isSetofReturn: false
+        }
+      }
+      record_study_session_review: {
+        Args: {
+          p_rating: Database["public"]["Enums"]["review_rating"]
+          p_session_id: string
+          p_vocabulary_id: string
+        }
+        Returns: Database["public"]["Tables"]["study_sessions"]["Row"]
+        SetofOptions: {
+          from: "study_sessions"
+          to: "study_sessions"
           isOneToOne: true
           isSetofReturn: false
         }
@@ -473,4 +527,3 @@ export const Constants = {
     },
   },
 } as const
-

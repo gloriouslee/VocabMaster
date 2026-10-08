@@ -15,18 +15,56 @@ export default function StudyPage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [vocabularies, setVocabularies] = useState<Vocabulary[]>([]);
   const [sessionQueue, setSessionQueue] = useState<Vocabulary[] | null>(null);
+  const [studySession, setStudySession] = useState<Awaited<ReturnType<typeof StorageService.getActiveStudySession>>>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isStarting, setIsStarting] = useState(false);
 
   useEffect(() => {
-    void Promise.all([StorageService.getFolders(), StorageService.getVocabularies()])
-      .then(([nextFolders, words]) => {
+    void Promise.all([
+      StorageService.getFolders(),
+      StorageService.getVocabularies(),
+      StorageService.getActiveStudySession(),
+    ])
+      .then(async ([nextFolders, words, savedSession]) => {
         setFolders(nextFolders);
         setVocabularies(words);
+        if (!savedSession) return;
+
+        const wordById = new Map(words.map((word) => [word.id, word]));
+        const sessionWords = savedSession.vocabularyIds.map((id) => wordById.get(id));
+        const remainingWords = sessionWords
+          .slice(savedSession.currentIndex)
+          .filter((word): word is Vocabulary => Boolean(word));
+
+        if (remainingWords.length === 0) {
+          await StorageService.deleteStudySession(savedSession.id);
+          return;
+        }
+
+        const hasRemovedWords = sessionWords.some((word) => !word);
+        const resumedSession = hasRemovedWords
+          ? await StorageService.resumeStudySession(savedSession.id, remainingWords.map((word) => word.id))
+          : savedSession;
+
+        setStudySession(resumedSession);
+        setSessionQueue(hasRemovedWords ? remainingWords : sessionWords as Vocabulary[]);
       })
       .catch((error) => setLoadError(error instanceof Error ? error.message : 'Unable to load study data.'))
       .finally(() => setIsLoading(false));
   }, []);
+
+  const saveAndStart = (queue: Vocabulary[]) => {
+    const nextQueue = shuffle(queue);
+    setIsStarting(true);
+    void StorageService.startStudySession(nextQueue.map((word) => word.id))
+      .then((session) => {
+        setStudySession(session);
+        setSessionQueue(nextQueue);
+      })
+      .catch((error) => alert(error instanceof Error ? error.message : 'Unable to save study session.'))
+      .finally(() => setIsStarting(false));
+  };
 
   const handleStartStudy = (selectedFolderIds: string[] | null, includeNotDue: boolean) => {
     let queue: Vocabulary[] = [];
@@ -51,20 +89,28 @@ export default function StudyPage() {
         return;
       }
       queue.sort((a, b) => new Date(a.nextReviewAt).getTime() - new Date(b.nextReviewAt).getTime());
-      setSessionQueue(queue);
+      saveAndStart(queue);
       return;
     }
 
-    setSessionQueue(shuffle(queue));
+    saveAndStart(queue);
   };
 
   const handleRecordRating = async (vocabId: string, rating: Rating) => {
-    await StorageService.recordReview(vocabId, rating);
+    if (!studySession) throw new Error('Your saved study session is unavailable. Please reload the page.');
+    const updatedSession = await StorageService.recordStudySessionReview(studySession.id, vocabId, rating);
+    setStudySession(updatedSession);
+    return updatedSession;
   };
 
-  const handleFinishSession = () => {
+  const handleFinishSession = async () => {
+    if (studySession) await StorageService.deleteStudySession(studySession.id);
+    setStudySession(null);
+    setSessionQueue(null);
     router.push('/');
   };
+
+  const handlePauseSession = () => router.push('/');
 
   return (
     <Shell>
@@ -79,18 +125,20 @@ export default function StudyPage() {
           </p>
         </div>
 
-        {!sessionQueue ? (
+        {!sessionQueue || !studySession ? (
           <ScopeSelector
             folders={folders}
             vocabularies={vocabularies}
-            isLoading={isLoading}
+            isLoading={isLoading || isStarting}
             onStartStudy={handleStartStudy}
           />
         ) : (
           <FlashcardDeck
             vocabularies={sessionQueue}
+            session={studySession}
             onRecordRating={handleRecordRating}
             onFinishSession={handleFinishSession}
+            onPauseSession={handlePauseSession}
           />
         )}
       </div>

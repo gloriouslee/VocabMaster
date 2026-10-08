@@ -7,6 +7,36 @@ type FolderRow = Tables<'folders'>;
 type VocabularyRow = Tables<'vocabularies'>;
 type QuizResultRow = Tables<'quiz_results'>;
 type MistakeRow = Tables<'mistake_logs'>;
+type StudySessionRow = Tables<'study_sessions'>;
+
+export interface StudySession {
+  id: string;
+  vocabularyIds: string[];
+  currentIndex: number;
+  ratingCounts: { forgot: number; hard: number; good: number; easy: number };
+}
+
+function mapStudySession(row: StudySessionRow): StudySession {
+  const counts = row.rating_counts && typeof row.rating_counts === 'object' && !Array.isArray(row.rating_counts)
+    ? row.rating_counts as Record<string, unknown>
+    : {};
+  const count = (key: keyof StudySession['ratingCounts']) => {
+    const value = counts[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  };
+
+  return {
+    id: row.id,
+    vocabularyIds: row.vocabulary_ids,
+    currentIndex: row.current_index,
+    ratingCounts: {
+      forgot: count('forgot'),
+      hard: count('hard'),
+      good: count('good'),
+      easy: count('easy'),
+    },
+  };
+}
 
 function client() {
   if (!supabase) {
@@ -223,6 +253,60 @@ export const StorageService = {
     });
     if (error) throw error;
     return mapVocabulary(data);
+  },
+
+  async getActiveStudySession(): Promise<StudySession | null> {
+    const userId = await currentUserId();
+    const { data, error } = await client()
+      .from('study_sessions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) throw error;
+    return data ? mapStudySession(data) : null;
+  },
+
+  async startStudySession(vocabularyIds: string[]): Promise<StudySession> {
+    const { data, error } = await client().rpc('start_study_session', {
+      p_vocabulary_ids: vocabularyIds,
+    });
+    if (error) throw error;
+    return mapStudySession(data);
+  },
+
+  async resumeStudySession(id: string, vocabularyIds: string[]): Promise<StudySession> {
+    const userId = await currentUserId();
+    const { data, error } = await client()
+      .from('study_sessions')
+      .update({ vocabulary_ids: vocabularyIds, current_index: 0 })
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select('*')
+      .single();
+    if (error) throw error;
+    return mapStudySession(data);
+  },
+
+  async recordStudySessionReview(sessionId: string, vocabularyId: string, rating: Rating): Promise<StudySession> {
+    const { data, error } = await client().rpc('record_study_session_review', {
+      p_session_id: sessionId,
+      p_vocabulary_id: vocabularyId,
+      p_rating: rating,
+    });
+    if (error) throw error;
+    return mapStudySession(data);
+  },
+
+  async deleteStudySession(id: string): Promise<void> {
+    const userId = await currentUserId();
+    const { error } = await client()
+      .from('study_sessions')
+      .delete()
+      .eq('id', id)
+      .eq('user_id', userId);
+    if (error) throw error;
   },
 
   async getQuizResults(): Promise<QuizResult[]> {
