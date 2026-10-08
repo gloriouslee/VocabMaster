@@ -47,6 +47,7 @@ export default function DashboardPage() {
   const newWords = vocabularies.filter((v) => v.status === 'new').length;
   const learningWords = vocabularies.filter((v) => v.status === 'learning').length;
   const masteredWords = vocabularies.filter((v) => v.status === 'mastered').length;
+  const dueWords = vocabularies.filter((v) => new Date(v.nextReviewAt).getTime() <= Date.now()).length;
 
   if (!mounted) {
     return (
@@ -97,7 +98,7 @@ export default function DashboardPage() {
         </div>
 
         {/* Epic 4.1: Overview Stats Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
           <StatCard
             title="Total Vocabulary"
             value={totalWords}
@@ -120,9 +121,16 @@ export default function DashboardPage() {
             color="purple"
           />
           <StatCard
+            title="Due for Review"
+            value={dueWords}
+            subtitle="Ready to practice now"
+            icon={Clock}
+            color="rose"
+          />
+          <StatCard
             title="Mastered Words"
             value={masteredWords}
-            subtitle="Retention rate > 80%"
+            subtitle="Scheduled at longer intervals"
             icon={CheckCircle}
             color="emerald"
           />

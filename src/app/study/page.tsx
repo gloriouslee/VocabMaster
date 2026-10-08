@@ -8,6 +8,7 @@ import { FlashcardDeck } from '@/components/study/FlashcardDeck';
 import { StorageService } from '@/lib/storage';
 import { Folder, Vocabulary } from '@/types';
 import { Rating } from '@/lib/spacedRepetition';
+import { shuffle } from '@/lib/shuffle';
 
 export default function StudyPage() {
   const router = useRouter();
@@ -15,6 +16,7 @@ export default function StudyPage() {
   const [vocabularies, setVocabularies] = useState<Vocabulary[]>([]);
   const [sessionQueue, setSessionQueue] = useState<Vocabulary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     void Promise.all([StorageService.getFolders(), StorageService.getVocabularies()])
@@ -22,10 +24,11 @@ export default function StudyPage() {
         setFolders(nextFolders);
         setVocabularies(words);
       })
-      .catch((error) => setLoadError(error instanceof Error ? error.message : 'Unable to load study data.'));
+      .catch((error) => setLoadError(error instanceof Error ? error.message : 'Unable to load study data.'))
+      .finally(() => setIsLoading(false));
   }, []);
 
-  const handleStartStudy = (selectedFolderIds: string[] | null) => {
+  const handleStartStudy = (selectedFolderIds: string[] | null, includeNotDue: boolean) => {
     let queue: Vocabulary[] = [];
 
     if (!selectedFolderIds) {
@@ -40,14 +43,23 @@ export default function StudyPage() {
       return;
     }
 
-    // Shuffle queue for active recall practice
-    const shuffled = [...queue].sort(() => Math.random() - 0.5);
-    setSessionQueue(shuffled);
+    if (!includeNotDue) {
+      const now = Date.now();
+      queue = queue.filter((v) => new Date(v.nextReviewAt).getTime() <= now);
+      if (queue.length === 0) {
+        alert('There are no cards due in this scope. Choose Practice ahead to review other words.');
+        return;
+      }
+      queue.sort((a, b) => new Date(a.nextReviewAt).getTime() - new Date(b.nextReviewAt).getTime());
+      setSessionQueue(queue);
+      return;
+    }
+
+    setSessionQueue(shuffle(queue));
   };
 
-  const handleRecordRating = (vocabId: string, rating: Rating) => {
-    void StorageService.recordReview(vocabId, rating)
-      .catch((error) => alert(error instanceof Error ? error.message : 'Unable to save review.'));
+  const handleRecordRating = async (vocabId: string, rating: Rating) => {
+    await StorageService.recordReview(vocabId, rating);
   };
 
   const handleFinishSession = () => {
@@ -71,6 +83,7 @@ export default function StudyPage() {
           <ScopeSelector
             folders={folders}
             vocabularies={vocabularies}
+            isLoading={isLoading}
             onStartStudy={handleStartStudy}
           />
         ) : (

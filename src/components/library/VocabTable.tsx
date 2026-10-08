@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Search,
   Filter,
@@ -11,7 +11,8 @@ import {
   CheckCircle,
   Clock,
   Sparkles,
-  BookOpen
+  BookOpen,
+  Download,
 } from 'lucide-react';
 import { Vocabulary, Folder, VocabStatus } from '@/types';
 
@@ -38,6 +39,10 @@ export function VocabTable({
     selectedFolderId || 'all'
   );
 
+  useEffect(() => {
+    setFolderFilter(selectedFolderId || 'all');
+  }, [selectedFolderId]);
+
   const handleSpeak = (text: string) => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(text);
@@ -53,7 +58,9 @@ export function VocabTable({
     const matchesSearch =
       v.word.toLowerCase().includes(searchQuery.toLowerCase()) ||
       v.meaning.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (v.example && v.example.toLowerCase().includes(searchQuery.toLowerCase()));
+      (v.example && v.example.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (v.phonetic && v.phonetic.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      (v.level && v.level.toLowerCase().includes(searchQuery.toLowerCase()));
 
     const matchesStatus = statusFilter === 'all' || v.status === statusFilter;
     const matchesFolder =
@@ -61,6 +68,33 @@ export function VocabTable({
 
     return matchesSearch && matchesStatus && matchesFolder;
   });
+
+  const handleExport = () => {
+    const headers = ['Word', 'Vietnamese Meaning', 'Word Type', 'Phonetic', 'Level', 'Example Sentence', 'Folder', 'Status', 'Next Review'];
+    const rows = filtered.map((vocab) => [
+      vocab.word,
+      vocab.meaning,
+      vocab.wordType,
+      vocab.phonetic || '',
+      vocab.level || '',
+      vocab.example || '',
+      vocab.folderId ? folderMap.get(vocab.folderId) || '' : '',
+      vocab.status,
+      vocab.nextReviewAt,
+    ]);
+    const csvCell = (value: string) => {
+      const safeValue = /^[\s]*[=+\-@]/.test(value) ? `'${value}` : value;
+      return `"${safeValue.replace(/"/g, '""')}"`;
+    };
+    const csv = [headers, ...rows].map((row) => row.map(csvCell).join(',')).join('\r\n');
+    const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `vocabmaster-words-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+  };
 
   const getStatusBadge = (status: VocabStatus) => {
     switch (status) {
@@ -98,6 +132,7 @@ export function VocabTable({
           <input
             type="text"
             placeholder="Search word, meaning, example sentence..."
+            aria-label="Search vocabulary"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-9 pr-4 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
@@ -106,6 +141,15 @@ export function VocabTable({
 
         {/* Filters & Actions */}
         <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleExport}
+            disabled={filtered.length === 0}
+            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Download className="h-4 w-4" />
+            <span>Export {filtered.length ? `(${filtered.length})` : ''}</span>
+          </button>
           {/* Status Filter */}
           <div className="flex items-center space-x-1.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs">
             <Filter className="w-3.5 h-3.5 text-slate-400" />

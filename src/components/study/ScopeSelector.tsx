@@ -1,22 +1,32 @@
 'use client';
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { Layers, Folder as FolderIcon, BookOpen, Play, Check } from 'lucide-react';
 import { Folder, Vocabulary } from '@/types';
 
 interface ScopeSelectorProps {
   folders: Folder[];
   vocabularies: Vocabulary[];
-  onStartStudy: (selectedFolderIds: string[] | null) => void;
+  isLoading?: boolean;
+  onStartStudy: (selectedFolderIds: string[] | null, includeNotDue: boolean) => void;
 }
 
 export function ScopeSelector({
   folders,
   vocabularies,
+  isLoading = false,
   onStartStudy,
 }: ScopeSelectorProps) {
   const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
   const [mode, setMode] = useState<'all' | 'custom'>('all');
+  const [includeNotDue, setIncludeNotDue] = useState(false);
+  const now = Date.now();
+  const dueWords = vocabularies.filter((v) => new Date(v.nextReviewAt).getTime() <= now);
+  const availableWords = includeNotDue ? vocabularies : dueWords;
+  const availableCount = mode === 'all'
+    ? availableWords.length
+    : availableWords.filter((v) => v.folderId && selectedFolderIds.includes(v.folderId)).length;
 
   const toggleFolder = (id: string) => {
     if (selectedFolderIds.includes(id)) {
@@ -27,19 +37,20 @@ export function ScopeSelector({
   };
 
   const countForFolder = (folderId: string | null) => {
-    if (!folderId) return vocabularies.length;
-    return vocabularies.filter((v) => v.folderId === folderId).length;
+    const words = includeNotDue ? vocabularies : dueWords;
+    if (!folderId) return words.length;
+    return words.filter((v) => v.folderId === folderId).length;
   };
 
   const handleStart = () => {
     if (mode === 'all') {
-      onStartStudy(null);
+      onStartStudy(null, includeNotDue);
     } else {
       if (selectedFolderIds.length === 0) {
         alert('Please select at least one folder to study.');
         return;
       }
-      onStartStudy(selectedFolderIds);
+      onStartStudy(selectedFolderIds, includeNotDue);
     }
   };
 
@@ -51,8 +62,29 @@ export function ScopeSelector({
         </div>
         <h2 className="text-xl font-bold text-slate-900">Select Learning Scope</h2>
         <p className="text-xs text-slate-500 max-w-md mx-auto">
-          Choose whether to practice your entire IELTS vocabulary library or focus on specific topic folders.
+          Review due words first, or practice ahead across your entire library or selected topics.
         </p>
+      </div>
+
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => setIncludeNotDue(false)}
+          aria-pressed={!includeNotDue}
+          className={`rounded-xl border p-4 text-left transition-colors ${!includeNotDue ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}
+        >
+          <span className="block text-sm font-bold text-slate-900">Due for review</span>
+          <span className="mt-1 block text-xs text-slate-500">{dueWords.length} cards are ready now</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setIncludeNotDue(true)}
+          aria-pressed={includeNotDue}
+          className={`rounded-xl border p-4 text-left transition-colors ${includeNotDue ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:bg-slate-50'}`}
+        >
+          <span className="block text-sm font-bold text-slate-900">Practice ahead</span>
+          <span className="mt-1 block text-xs text-slate-500">Include all {vocabularies.length} cards</span>
+        </button>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -72,7 +104,7 @@ export function ScopeSelector({
           <BookOpen className="w-6 h-6 text-blue-600 mb-2" />
           <h3 className="font-bold text-sm text-slate-900">Entire Library</h3>
           <p className="text-xs text-slate-500 mt-1">
-            Study all {vocabularies.length} words with active spaced repetition.
+            {countForFolder(null)} {includeNotDue ? 'words available to practice.' : 'cards are due for review.'}
           </p>
         </button>
 
@@ -131,12 +163,22 @@ export function ScopeSelector({
         </div>
       )}
 
+      {!isLoading && vocabularies.length === 0 && (
+        <p className="text-center text-sm text-slate-500">
+          Your library is empty. <Link href="/import" className="font-semibold text-blue-600 hover:underline">Import vocabulary</Link> or add words in the library.
+        </p>
+      )}
+      {!isLoading && vocabularies.length > 0 && availableCount === 0 && !includeNotDue && (
+        <p className="text-center text-sm text-slate-500">No cards in this scope are due yet. Choose Practice ahead to study them now.</p>
+      )}
+
       <button
         onClick={handleStart}
-        className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-extrabold rounded-2xl text-sm transition-all shadow-md shadow-blue-500/20 flex items-center justify-center space-x-2"
+        disabled={isLoading || availableCount === 0}
+        className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 text-white font-extrabold rounded-2xl text-sm transition-all shadow-md shadow-blue-500/20 flex items-center justify-center space-x-2"
       >
         <Play className="w-4 h-4 fill-white" />
-        <span>Start Spaced Repetition Session</span>
+        <span>{isLoading ? 'Loading library…' : `Start ${includeNotDue ? 'Practice Session' : 'Due Review'}`}</span>
       </button>
     </div>
   );

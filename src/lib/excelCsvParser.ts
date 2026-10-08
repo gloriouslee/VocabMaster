@@ -1,6 +1,7 @@
 import * as XLSX from 'xlsx';
 import Papa from 'papaparse';
 import { RawImportRecord, Vocabulary, WordType } from '@/types';
+import { normalizeWord } from './normalizeWord';
 
 const VALID_WORD_TYPES: WordType[] = ['noun', 'verb', 'adjective', 'adverb', 'phrase', 'idiom', 'other'];
 
@@ -20,7 +21,7 @@ export async function parseImportFile(
   }
 
   const existingWordSet = new Set(
-    existingVocabularies.map((v) => v.word.trim().toLowerCase())
+    existingVocabularies.map((v) => normalizeWord(v.word))
   );
   const seenInBatch = new Set<string>();
 
@@ -51,7 +52,7 @@ export async function parseImportFile(
       else normalizedWordType = 'other';
     }
 
-    const lowerWord = word.toLowerCase();
+    const lowerWord = normalizeWord(word);
     let status: 'valid' | 'duplicate' | 'invalid' = 'valid';
 
     if (errors.length > 0) {
@@ -61,7 +62,7 @@ export async function parseImportFile(
       errors.push('Duplicate word detected in library or batch');
     }
 
-    if (word) {
+    if (word && errors.length === 0) {
       seenInBatch.add(lowerWord);
     }
 

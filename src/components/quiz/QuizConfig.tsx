@@ -7,6 +7,7 @@ import { Folder, Vocabulary } from '@/types';
 interface QuizConfigProps {
   folders: Folder[];
   vocabularies: Vocabulary[];
+  isLoading?: boolean;
   onStartQuiz: (
     selectedFolderIds: string[] | null,
     questionCount: number,
@@ -14,11 +15,14 @@ interface QuizConfigProps {
   ) => void;
 }
 
-export function QuizConfig({ folders, vocabularies, onStartQuiz }: QuizConfigProps) {
+export function QuizConfig({ folders, vocabularies, isLoading = false, onStartQuiz }: QuizConfigProps) {
   const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
   const [scopeMode, setScopeMode] = useState<'all' | 'custom'>('all');
   const [questionCount, setQuestionCount] = useState(10);
   const [quizType, setQuizType] = useState<'mixed' | 'mcq' | 'reverse'>('mixed');
+  const selectedWords = scopeMode === 'all'
+    ? vocabularies
+    : vocabularies.filter((vocab) => vocab.folderId && selectedFolderIds.includes(vocab.folderId));
 
   const toggleFolder = (id: string) => {
     if (selectedFolderIds.includes(id)) {
@@ -101,6 +105,14 @@ export function QuizConfig({ folders, vocabularies, onStartQuiz }: QuizConfigPro
         </div>
       )}
 
+      {!isLoading && selectedWords.length < 4 && (
+        <p className="text-center text-sm text-slate-500">
+          {selectedWords.length === 0
+            ? 'Add vocabulary to this scope to begin a quiz.'
+            : `Add ${4 - selectedWords.length} more unique words to create a multiple-choice quiz.`}
+        </p>
+      )}
+
       {/* Question Count & Type */}
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -137,10 +149,11 @@ export function QuizConfig({ folders, vocabularies, onStartQuiz }: QuizConfigPro
 
       <button
         onClick={handleStart}
-        className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-2xl text-xs transition-colors shadow-md flex items-center justify-center space-x-2"
+        disabled={isLoading || selectedWords.length < 4}
+        className="w-full py-3.5 bg-indigo-600 hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50 text-white font-bold rounded-2xl text-xs transition-colors shadow-md flex items-center justify-center space-x-2"
       >
         <Play className="w-4 h-4 fill-white" />
-        <span>Start Quiz</span>
+        <span>{isLoading ? 'Loading vocabulary…' : 'Start Quiz'}</span>
       </button>
     </div>
   );

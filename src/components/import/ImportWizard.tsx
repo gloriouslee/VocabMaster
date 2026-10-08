@@ -19,6 +19,7 @@ import {
 import * as XLSX from 'xlsx';
 import { parseImportFile } from '@/lib/excelCsvParser';
 import { RawImportRecord, Vocabulary, Folder, WordType } from '@/types';
+import { normalizeWord } from '@/lib/normalizeWord';
 
 export interface ConfirmImportPayload {
   records: RawImportRecord[];
@@ -119,27 +120,29 @@ export function ImportWizard({
     field: keyof RawImportRecord,
     val: string
   ) => {
-    setRecords((prev) =>
-      prev.map((r) => {
-        if (r.id === id) {
-          const updated = { ...r, [field]: val };
-          const errors: string[] = [];
-          if (!updated.word.trim()) errors.push('Missing Word');
-          if (!updated.meaning.trim()) errors.push('Missing Meaning');
-          if (!updated.wordType) errors.push('Missing Word Type');
+    setRecords((prev) => {
+      const edited = prev.map((record) =>
+        record.id === id ? { ...record, [field]: val } : record
+      );
+      const seen = new Set(existingVocabularies.map((vocab) => normalizeWord(vocab.word)));
 
-          let newStatus: 'valid' | 'duplicate' | 'invalid' = 'valid';
-          if (errors.length > 0) newStatus = 'invalid';
+      return edited.map((record) => {
+        const errors: string[] = [];
+        if (!record.word.trim()) errors.push('Missing Word');
+        if (!record.meaning.trim()) errors.push('Missing Vietnamese Meaning');
+        if (!record.wordType) errors.push('Missing Word Type');
 
-          return {
-            ...updated,
-            status: newStatus,
-            validationErrors: errors,
-          };
+        let status: RawImportRecord['status'] = errors.length > 0 ? 'invalid' : 'valid';
+        const normalizedWord = normalizeWord(record.word);
+        if (status !== 'invalid' && seen.has(normalizedWord)) {
+          status = 'duplicate';
+          errors.push('Duplicate word detected in library or batch');
         }
-        return r;
-      })
-    );
+        if (status !== 'invalid' && normalizedWord) seen.add(normalizedWord);
+
+        return { ...record, status, validationErrors: errors };
+      });
+    });
   };
 
   const handleConfirm = async () => {

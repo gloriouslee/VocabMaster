@@ -17,7 +17,7 @@ import { Rating } from '@/lib/spacedRepetition';
 
 interface FlashcardDeckProps {
   vocabularies: Vocabulary[];
-  onRecordRating: (vocabId: string, rating: Rating) => void;
+  onRecordRating: (vocabId: string, rating: Rating) => Promise<void>;
   onFinishSession: () => void;
 }
 
@@ -29,6 +29,7 @@ export function FlashcardDeck({
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showAnswer, setShowAnswer] = useState(false);
   const [completedCount, setCompletedCount] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
   const [ratingStats, setRatingStats] = useState({
     forgot: 0,
     hard: 0,
@@ -48,10 +49,19 @@ export function FlashcardDeck({
     }
   };
 
-  const handleRating = (rating: Rating) => {
+  const handleRating = async (rating: Rating) => {
     if (!currentVocab) return;
 
-    onRecordRating(currentVocab.id, rating);
+    setIsSaving(true);
+    try {
+      await onRecordRating(currentVocab.id, rating);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to save review.');
+      return;
+    } finally {
+      setIsSaving(false);
+    }
+
     setRatingStats((prev) => ({ ...prev, [rating]: prev[rating] + 1 }));
     setCompletedCount((prev) => prev + 1);
 
@@ -200,9 +210,11 @@ export function FlashcardDeck({
         {/* Spaced Repetition Rating Actions */}
         {showAnswer && (
           <div className="p-4 bg-slate-50 border-t border-slate-100 grid grid-cols-4 gap-2">
+            {isSaving && <p role="status" className="col-span-4 text-center text-xs text-slate-500">Saving your review…</p>}
             <button
               onClick={() => handleRating('forgot')}
-              className="p-3 bg-rose-500 hover:bg-rose-600 text-white rounded-2xl font-bold text-xs flex flex-col items-center transition-all shadow-sm active:scale-95"
+              disabled={isSaving}
+              className="p-3 bg-rose-500 hover:bg-rose-600 disabled:cursor-wait disabled:opacity-60 text-white rounded-2xl font-bold text-xs flex flex-col items-center transition-all shadow-sm active:scale-95"
             >
               <span>Forgot</span>
               <span className="text-[10px] font-normal text-rose-100 mt-0.5">Today</span>
@@ -210,7 +222,8 @@ export function FlashcardDeck({
 
             <button
               onClick={() => handleRating('hard')}
-              className="p-3 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl font-bold text-xs flex flex-col items-center transition-all shadow-sm active:scale-95"
+              disabled={isSaving}
+              className="p-3 bg-amber-500 hover:bg-amber-600 disabled:cursor-wait disabled:opacity-60 text-white rounded-2xl font-bold text-xs flex flex-col items-center transition-all shadow-sm active:scale-95"
             >
               <span>Hard</span>
               <span className="text-[10px] font-normal text-amber-100 mt-0.5">1 Day</span>
@@ -218,7 +231,8 @@ export function FlashcardDeck({
 
             <button
               onClick={() => handleRating('good')}
-              className="p-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl font-bold text-xs flex flex-col items-center transition-all shadow-sm active:scale-95"
+              disabled={isSaving}
+              className="p-3 bg-blue-600 hover:bg-blue-700 disabled:cursor-wait disabled:opacity-60 text-white rounded-2xl font-bold text-xs flex flex-col items-center transition-all shadow-sm active:scale-95"
             >
               <span>Good</span>
               <span className="text-[10px] font-normal text-blue-100 mt-0.5">3 Days</span>
@@ -226,7 +240,8 @@ export function FlashcardDeck({
 
             <button
               onClick={() => handleRating('easy')}
-              className="p-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs flex flex-col items-center transition-all shadow-sm active:scale-95"
+              disabled={isSaving}
+              className="p-3 bg-emerald-600 hover:bg-emerald-700 disabled:cursor-wait disabled:opacity-60 text-white rounded-2xl font-bold text-xs flex flex-col items-center transition-all shadow-sm active:scale-95"
             >
               <span>Easy</span>
               <span className="text-[10px] font-normal text-emerald-100 mt-0.5">7 Days</span>
