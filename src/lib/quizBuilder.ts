@@ -77,7 +77,8 @@ export function dedupeWords(words: Vocabulary[]): Vocabulary[] {
 
 /** Higher means the learner struggles more with this word. */
 export function weaknessScore(word: Vocabulary, info: WeaknessInfo, now = Date.now()): number {
-  const lapses = info.lapses.get(word.id) || 0;
+  // Flashcard lapses stop counting once the word is well learned again.
+  const lapses = word.status === 'mastered' ? 0 : info.lapses.get(word.id) || 0;
   const mistakes = info.mistakes.get(word.id) || 0;
   const easePenalty = Math.max(0, 2.5 - (word.easeFactor || 2.5));
   const overdue = word.status !== 'new' && new Date(word.nextReviewAt).getTime() <= now ? 0.5 : 0;

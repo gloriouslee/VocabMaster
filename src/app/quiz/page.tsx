@@ -195,6 +195,16 @@ export default function QuizPage() {
       persistSnapshot(null);
       setHistory((current) => [result, ...current]);
 
+      // Answering a previously missed word correctly clears its open mistakes.
+      const correctIds = new Set(answers.filter((answer) => answer.isCorrect).map((answer) => answer.question.vocab.id));
+      const toResolve = mistakes.filter((log) => !log.resolved && log.vocabularyId && correctIds.has(log.vocabularyId));
+      if (toResolve.length > 0) {
+        void Promise.all(toResolve.map((log) => StorageService.resolveMistakeLog(log.id)))
+          .then(() => StorageService.getMistakeLogs())
+          .then(setMistakes)
+          .catch(() => undefined);
+      }
+
       // Rescheduling is best effort: the quiz result is already saved.
       const uniqueMissed = [...new Map(wrong.map((answer) => [answer.question.vocab.id, answer.question.vocab])).values()];
       try {

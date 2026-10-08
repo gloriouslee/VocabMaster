@@ -101,8 +101,8 @@ export function QuizSummary({ userAnswers, folders, previousScore, elapsedMs, is
           )}
         </div>
         {wrongCount > 0 && (
-          <Link href="/mistakes" className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800">
-            <AlertCircle className="h-3.5 w-3.5" /> Open the mistake bank
+          <Link href="/weak-words" className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-slate-800">
+            <AlertCircle className="h-3.5 w-3.5" /> See all my weak words
           </Link>
         )}
       </div>

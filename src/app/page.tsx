@@ -204,7 +204,7 @@ export default function DashboardPage() {
               </Link>
 
               <Link
-                href="/mistakes"
+                href="/weak-words"
                 className="flex items-center justify-between p-3.5 rounded-xl border border-slate-200 hover:border-rose-500 hover:bg-rose-50/50 transition-colors group"
               >
                 <div className="flex items-center space-x-3">
@@ -212,8 +212,8 @@ export default function DashboardPage() {
                     <AlertCircle className="w-4 h-4" />
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-900">Review Mistake Bank</p>
-                    <p className="text-[10px] text-slate-500">Re-practice past wrong answers</p>
+                    <p className="text-xs font-bold text-slate-900">Practice Weak Words</p>
+                    <p className="text-[10px] text-slate-500">Words you keep forgetting or missing</p>
                   </div>
                 </div>
                 <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-rose-600 transition-colors" />

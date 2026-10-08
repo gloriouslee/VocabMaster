@@ -49,10 +49,10 @@ export function Sidebar() {
       active: pathname === '/quiz',
     },
     {
-      label: 'Mistake Review',
-      href: '/mistakes',
+      label: 'Weak Words',
+      href: '/weak-words',
       icon: AlertCircle,
-      active: pathname === '/mistakes',
+      active: pathname === '/weak-words',
     },
   ];
 
