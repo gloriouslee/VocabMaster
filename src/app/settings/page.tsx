@@ -16,6 +16,9 @@ import {
 import { ExamGoal, loadExamGoal, planForExam, saveExamGoal } from '@/lib/examGoal';
 import { createBackup, parseBackup } from '@/lib/backup';
 import { STARTER_PACK_SIZE } from '@/lib/starterPack';
+import { supabase } from '@/lib/supabase';
+import { MAX_NAME_LENGTH, Profile, profileFromUser, removeAvatar, updateDisplayName, uploadAvatar } from '@/lib/profile';
+import { Avatar } from '@/components/layout/Avatar';
 
 type Notice = { tone: 'ok' | 'error'; text: string } | null;
 
@@ -46,8 +49,21 @@ export default function SettingsPage() {
   const [notice, setNotice] = useState<{ section: string; value: Notice }>({ section: '', value: null });
   const [isBusy, setIsBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const avatarInput = useRef<HTMLInputElement>(null);
+  const [profile, setProfile] = useState<Profile | null>(null);
+  const [nameDraft, setNameDraft] = useState('');
+
+  const loadProfile = async () => {
+    if (!supabase) return;
+    const { data } = await supabase.auth.getUser();
+    if (!data.user) return;
+    const next = profileFromUser(data.user);
+    setProfile(next);
+    setNameDraft((current) => current || next.name);
+  };
 
   useEffect(() => {
+    void loadProfile();
     setPrefs(loadDailyPrefs());
     setExam(loadExamGoal());
     setAccent(window.localStorage.getItem('vocabmaster.accent') === 'en-GB' ? 'en-GB' : 'en-US');
@@ -58,6 +74,20 @@ export default function SettingsPage() {
 
   const say = (section: string, tone: 'ok' | 'error', text: string) => setNotice({ section, value: { tone, text } });
   const noticeFor = (section: string) => (notice.section === section ? notice.value : null);
+
+  const runProfileAction = async (action: () => Promise<void>, success: string) => {
+    setIsBusy(true);
+    try {
+      await action();
+      await loadProfile();
+      say('profile', 'ok', success);
+    } catch (error) {
+      say('profile', 'error', error instanceof Error ? error.message : 'Something went wrong. Please try again.');
+    } finally {
+      setIsBusy(false);
+      if (avatarInput.current) avatarInput.current.value = '';
+    }
+  };
 
   const updatePrefs = (next: DailyPrefs) => {
     setPrefs(next);
@@ -133,6 +163,60 @@ export default function SettingsPage() {
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Settings</h1>
           <p className="mt-1 text-xs text-slate-500">Your preferences are saved to your account and follow you across devices.</p>
         </div>
+
+        <Section title="Profile" description="How you appear in the app. Your email stays private and is only used to sign in.">
+          <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+            <div className="flex items-center gap-4">
+              {profile ? <Avatar profile={profile} size={72} /> : <div className="h-[72px] w-[72px] animate-pulse rounded-full bg-slate-200" />}
+              <div className="space-y-1.5">
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => avatarInput.current?.click()} disabled={isBusy || !profile} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">
+                    {profile?.hasCustomAvatar ? 'Change photo' : 'Upload photo'}
+                  </button>
+                  {profile?.hasCustomAvatar && (
+                    <button type="button" onClick={() => void runProfileAction(removeAvatar, 'Photo removed.')} disabled={isBusy} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 disabled:opacity-60">Remove</button>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">JPG, PNG or WebP. It is cropped to a square.</p>
+                <input
+                  ref={avatarInput}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void runProfileAction(() => uploadAvatar(file), 'Photo updated.');
+                  }}
+                />
+              </div>
+            </div>
+
+            <form
+              className="flex-1 space-y-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void runProfileAction(() => updateDisplayName(nameDraft), 'Name saved.');
+              }}
+            >
+              <label className="block text-xs font-semibold text-slate-600">
+                Display name
+                <input
+                  type="text"
+                  value={nameDraft}
+                  maxLength={MAX_NAME_LENGTH}
+                  onChange={(event) => setNameDraft(event.target.value)}
+                  className={selectClass}
+                  placeholder="What should we call you?"
+                />
+              </label>
+              <div className="flex items-center gap-3">
+                <button type="submit" disabled={isBusy || !nameDraft.trim() || nameDraft.trim() === profile?.name} className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-blue-700 disabled:opacity-50">Save name</button>
+                {profile && <span className="truncate text-xs text-slate-500">Signed in as {profile.email}</span>}
+              </div>
+            </form>
+          </div>
+          <NoticeText notice={noticeFor('profile')} />
+        </Section>
 
         <Section title="Daily study plan" description="How much you want to study each day. These drive your dashboard goal and study sessions.">
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">

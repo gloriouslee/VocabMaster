@@ -64,7 +64,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   ];
 
   return (
-    <aside className="w-64 bg-slate-900 text-slate-100 flex flex-col min-h-screen border-r border-slate-800 shadow-xl">
+    <aside className="w-64 h-full bg-slate-900 text-slate-100 flex flex-col border-r border-slate-800 shadow-xl">
       {/* Brand Header */}
       <div className="p-5 border-b border-slate-800 flex items-center space-x-3">
         <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-500 flex items-center justify-center shadow-lg shadow-blue-500/20">

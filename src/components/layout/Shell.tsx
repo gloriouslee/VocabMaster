@@ -8,6 +8,7 @@ import { StorageService } from '@/lib/storage';
 import { UserStats } from '@/types';
 import { clearAuthTokensFromUrl, supabase } from '@/lib/supabase';
 import { syncSettingsFromServer } from '@/lib/settings';
+import { Profile, profileFromUser } from '@/lib/profile';
 import { useRouter } from 'next/navigation';
 
 interface ShellProps {
@@ -22,6 +23,7 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [stats, setStats] = useState<UserStats | undefined>(undefined);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [profile, setProfile] = useState<Profile | null>(null);
   const [settingsReady, setSettingsReady] = useState(false);
 
   useEffect(() => {
@@ -56,14 +58,18 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
       if (!active) return;
       if (error) setAuthError(error.message);
       const email = data.session?.user.email || null;
+      setProfile(data.session ? profileFromUser(data.session.user) : null);
       if (data.session) clearAuthTokensFromUrl();
       if (requireAuth && !email) router.replace('/auth');
       void loadUserData(email);
       setAuthReady(true);
     });
 
-    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if (!active) return;
+      setProfile(session ? profileFromUser(session.user) : null);
+      // Saving a name or picture only changes the profile; nothing else needs reloading.
+      if (event === 'USER_UPDATED') return;
       const email = session?.user.email || null;
       if (session) clearAuthTokensFromUrl();
       if (requireAuth && !email) router.replace('/auth');
@@ -100,7 +106,7 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
-      <div className="hidden md:block">
+      <div className="hidden shrink-0 md:block sticky top-0 h-screen self-start">
         <Sidebar />
       </div>
       {menuOpen && (
@@ -112,7 +118,7 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
         </div>
       )}
       <div className="flex-1 flex flex-col min-w-0">
-        <Header stats={stats} userEmail={userEmail} onSignOut={handleSignOut} onMenuClick={() => setMenuOpen(true)} />
+        <Header stats={stats} userEmail={userEmail} profile={profile} onSignOut={handleSignOut} onMenuClick={() => setMenuOpen(true)} />
         <main className="flex-1 p-4 pb-24 md:p-8 md:pb-8 max-w-[1600px] w-full mx-auto">{children}</main>
       </div>
       <MobileNav onMore={() => setMenuOpen(true)} />

@@ -4,16 +4,19 @@ import React, { useState } from 'react';
 import Link from 'next/link';
 import { Flame, User, LogOut, Menu } from 'lucide-react';
 import { GlobalSearch } from './GlobalSearch';
+import { Avatar } from './Avatar';
+import type { Profile } from '@/lib/profile';
 import { UserStats } from '@/types';
 
 interface HeaderProps {
   stats?: UserStats;
   userEmail: string | null;
+  profile?: Profile | null;
   onSignOut: () => void;
   onMenuClick?: () => void;
 }
 
-export function Header({ stats, userEmail, onSignOut, onMenuClick }: HeaderProps) {
+export function Header({ stats, userEmail, profile, onSignOut, onMenuClick }: HeaderProps) {
   const streakDays = stats?.currentStreak || 0;
 
   return (
@@ -38,13 +41,13 @@ export function Header({ stats, userEmail, onSignOut, onMenuClick }: HeaderProps
 
         {/* User Auth */}
         {userEmail ? (
-          <div className="flex items-center space-x-3 bg-slate-50 border border-slate-200 rounded-xl pl-3 pr-2 py-1">
-            <div className="w-7 h-7 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
-              {userEmail.charAt(0).toUpperCase()}
-            </div>
-            <span className="hidden max-w-[120px] truncate text-xs font-medium text-slate-700 lg:inline">
-              {userEmail}
-            </span>
+          <div className="flex items-center space-x-1 bg-slate-50 border border-slate-200 rounded-xl pl-1.5 pr-2 py-1">
+            <Link href="/settings" title={`${profile?.name || userEmail}\n${userEmail}\nEdit profile`} className="flex items-center gap-2 rounded-lg px-1 py-0.5 hover:bg-slate-100">
+              <Avatar profile={profile || { name: userEmail, avatarUrl: null }} size={28} />
+              <span className="hidden max-w-[140px] truncate text-xs font-semibold text-slate-800 lg:inline">
+                {profile?.name || userEmail}
+              </span>
+            </Link>
             <button
               onClick={onSignOut}
               className="p-1 hover:bg-slate-200 rounded-lg text-slate-500 transition-colors"
