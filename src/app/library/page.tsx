@@ -1,6 +1,8 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import Link from 'next/link';
+import { BookOpen, Clock3, CheckCircle2, Plus, Upload } from 'lucide-react';
 import { Shell } from '@/components/layout/Shell';
 import { FolderTree } from '@/components/library/FolderTree';
 import { VocabTable } from '@/components/library/VocabTable';
@@ -17,6 +19,16 @@ export default function LibraryPage() {
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVocab, setEditingVocab] = useState<Vocabulary | null>(null);
+
+  const folderWordCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const word of vocabularies) {
+      if (word.folderId) counts.set(word.folderId, (counts.get(word.folderId) || 0) + 1);
+    }
+    return counts;
+  }, [vocabularies]);
+  const dueCount = vocabularies.filter((word) => new Date(word.nextReviewAt).getTime() <= Date.now()).length;
+  const masteredCount = vocabularies.filter((word) => word.status === 'mastered').length;
 
   const refreshData = async () => {
     const [nextFolders, nextVocabularies] = await Promise.all([
@@ -55,7 +67,13 @@ export default function LibraryPage() {
     if (confirm('Are you sure you want to delete this folder and its subfolders?')) {
       try {
         await StorageService.deleteFolder(id);
-        if (selectedFolderId === id) setSelectedFolderId(null);
+        const deletedFolderIds = new Set<string>();
+        const collectDescendants = (folderId: string) => {
+          deletedFolderIds.add(folderId);
+          folders.filter((folder) => folder.parentId === folderId).forEach((child) => collectDescendants(child.id));
+        };
+        collectDescendants(id);
+        if (selectedFolderId && deletedFolderIds.has(selectedFolderId)) setSelectedFolderId(null);
         await refreshData();
       } catch (error) {
         alert(error instanceof Error ? error.message : 'Unable to delete folder.');
@@ -105,34 +123,75 @@ export default function LibraryPage() {
     <Shell>
       <div className="space-y-6">
         {loadError && <p role="alert" className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{loadError}</p>}
-        <div>
-          <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
-            Vocabulary Library & Topics
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Organize your IELTS vocabulary into topic folders and subfolders.
-          </p>
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">Your study collection</p>
+            <h1 className="mt-1 text-3xl font-extrabold tracking-tight text-slate-950">Vocabulary library</h1>
+            <p className="mt-1 text-sm text-slate-500">Keep words organized, review due cards, and grow your vocabulary.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Link href="/import" className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50">
+              <Upload className="h-4 w-4" /> Import words
+            </Link>
+            <button onClick={() => { setEditingVocab(null); setIsModalOpen(true); }} className="inline-flex items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-blue-700">
+              <Plus className="h-4 w-4" /> Add word
+            </button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
-          {/* Left Column: Folder Management (Epic 1.1) */}
-          <div className="lg:col-span-1">
+        <section aria-label="Library overview" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600"><BookOpen className="h-5 w-5" /></span>
+            <div><p className="text-xs font-medium text-slate-500">Total words</p><p className="text-xl font-bold text-slate-900">{vocabularies.length}</p></div>
+          </div>
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><Clock3 className="h-5 w-5" /></span>
+            <div><p className="text-xs font-medium text-slate-500">Due for review</p><p className="text-xl font-bold text-slate-900">{dueCount}</p></div>
+          </div>
+          <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><CheckCircle2 className="h-5 w-5" /></span>
+            <div><p className="text-xs font-medium text-slate-500">Mastered</p><p className="text-xl font-bold text-slate-900">{masteredCount}</p></div>
+          </div>
+        </section>
+
+        <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[230px_minmax(0,1fr)]">
+          <details className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:hidden">
+            <summary className="cursor-pointer list-none text-sm font-semibold text-slate-800">
+              Topics <span className="ml-1 font-normal text-slate-500">({folders.length}) · {selectedFolderId ? folders.find((folder) => folder.id === selectedFolderId)?.name || 'All topics' : 'All topics'}</span>
+            </summary>
+            <div className="pt-3">
+              <FolderTree
+                folders={folders}
+                wordCounts={folderWordCounts}
+                totalWords={vocabularies.length}
+                selectedFolderId={selectedFolderId}
+                onSelectFolder={setSelectedFolderId}
+                onCreateFolder={handleCreateFolder}
+                onRenameFolder={handleRenameFolder}
+                onDeleteFolder={handleDeleteFolder}
+              />
+            </div>
+          </details>
+
+          <aside className="sticky top-5 hidden lg:block">
             <FolderTree
               folders={folders}
+              wordCounts={folderWordCounts}
+              totalWords={vocabularies.length}
               selectedFolderId={selectedFolderId}
               onSelectFolder={setSelectedFolderId}
               onCreateFolder={handleCreateFolder}
               onRenameFolder={handleRenameFolder}
               onDeleteFolder={handleDeleteFolder}
             />
-          </div>
+          </aside>
 
-          {/* Right Column: Vocabulary List View (Epic 1.4) */}
-          <div className="lg:col-span-3">
+          <div className="min-w-0">
             <VocabTable
               vocabularies={vocabularies}
               folders={folders}
               selectedFolderId={selectedFolderId}
+              onClearFolder={() => setSelectedFolderId(null)}
               onAddWord={() => {
                 setEditingVocab(null);
                 setIsModalOpen(true);
@@ -153,6 +212,7 @@ export default function LibraryPage() {
           onSave={handleSaveVocab}
           folders={folders}
           initialData={editingVocab}
+          defaultFolderId={selectedFolderId}
         />
       </div>
     </Shell>

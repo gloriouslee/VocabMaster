@@ -10,6 +10,7 @@ interface VocabModalProps {
   onSave: (vocabData: Partial<Vocabulary>) => Promise<void>;
   folders: Folder[];
   initialData?: Vocabulary | null;
+  defaultFolderId?: string | null;
 }
 
 export function VocabModal({
@@ -18,6 +19,7 @@ export function VocabModal({
   onSave,
   folders,
   initialData,
+  defaultFolderId,
 }: VocabModalProps) {
   const [word, setWord] = useState('');
   const [meaning, setMeaning] = useState('');
@@ -46,10 +48,10 @@ export function VocabModal({
       setPhonetic('');
       setLevel('Band 7.0');
       setExample('');
-      setFolderId(folders[0]?.id || null);
+      setFolderId(defaultFolderId || folders[0]?.id || null);
       setStatus('new');
     }
-  }, [initialData, isOpen, folders]);
+  }, [initialData, isOpen, folders, defaultFolderId]);
 
   if (!isOpen) return null;
 

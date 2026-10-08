@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Folder as FolderIcon,
   FolderPlus,
@@ -15,6 +15,8 @@ import { Folder } from '@/types';
 
 interface FolderTreeProps {
   folders: Folder[];
+  wordCounts: Map<string, number>;
+  totalWords: number;
   selectedFolderId?: string | null;
   onSelectFolder: (folderId: string | null) => void;
   onCreateFolder: (name: string, parentId: string | null) => void;
@@ -24,6 +26,8 @@ interface FolderTreeProps {
 
 export function FolderTree({
   folders,
+  wordCounts,
+  totalWords,
   selectedFolderId,
   onSelectFolder,
   onCreateFolder,
@@ -40,6 +44,10 @@ export function FolderTree({
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+
+  useEffect(() => {
+    setExpandedFolderIds((previous) => new Set([...previous, ...folders.map((folder) => folder.id)]));
+  }, [folders]);
 
   const toggleExpand = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -73,29 +81,29 @@ export function FolderTree({
     setEditingId(null);
   };
 
-  const rootFolders = folders.filter((f) => !f.parentId);
+  const childrenByParent = new Map<string | null, Folder[]>();
+  for (const folder of folders) {
+    const siblings = childrenByParent.get(folder.parentId) || [];
+    siblings.push(folder);
+    childrenByParent.set(folder.parentId, siblings);
+  }
+  const rootFolders = childrenByParent.get(null) || [];
 
   const renderFolderNode = (folder: Folder, level: number = 0) => {
-    const children = folders.filter((f) => f.parentId === folder.id);
+    const children = childrenByParent.get(folder.id) || [];
     const isExpanded = expandedFolderIds.has(folder.id);
     const isSelected = selectedFolderId === folder.id;
     const isEditing = editingId === folder.id;
 
     return (
       <div key={folder.id} className="select-none">
-        <div
-          onClick={() => onSelectFolder(folder.id)}
-          className={`flex items-center justify-between px-3 py-2 rounded-xl text-sm font-medium transition-all group cursor-pointer ${
-            isSelected
-              ? 'bg-blue-600 text-white shadow-sm font-semibold'
-              : 'hover:bg-slate-100 text-slate-700'
-          }`}
-          style={{ paddingLeft: `${Math.max(12, level * 18 + 12)}px` }}
-        >
-          <div className="flex items-center space-x-2 flex-1 min-w-0">
+        <div className={`group flex items-center gap-1 rounded-xl pr-1 transition-colors ${isSelected ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-700 hover:bg-slate-100'}`}>
+          <div className="flex min-w-0 flex-1 items-center gap-1" style={{ paddingLeft: `${Math.max(8, level * 14 + 8)}px` }}>
             {children.length > 0 ? (
               <button
                 onClick={(e) => toggleExpand(folder.id, e)}
+                type="button"
+                aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${folder.name}`}
                 className={`p-0.5 rounded hover:bg-slate-200/50 ${
                   isSelected ? 'text-white' : 'text-slate-400'
                 }`}
@@ -109,16 +117,10 @@ export function FolderTree({
             ) : (
               <span className="w-3.5" />
             )}
-
-            <FolderIcon
-              className={`w-4 h-4 shrink-0 ${
-                isSelected ? 'text-white' : 'text-blue-500'
-              }`}
-            />
-
             {isEditing ? (
               <input
                 type="text"
+                aria-label={`Rename ${folder.name}`}
                 value={editingName}
                 onChange={(e) => setEditingName(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSaveRename(folder.id)}
@@ -128,23 +130,36 @@ export function FolderTree({
                 className="px-2 py-0.5 text-xs border border-blue-400 rounded outline-none text-slate-900 bg-white"
               />
             ) : (
-              <span className="truncate text-xs">{folder.name}</span>
+              <button
+                type="button"
+                onClick={() => onSelectFolder(folder.id)}
+                aria-pressed={isSelected}
+                className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left"
+              >
+                <FolderIcon className={`h-4 w-4 shrink-0 ${isSelected ? 'text-white' : 'text-blue-500'}`} />
+                <span className="truncate text-xs">{folder.name}</span>
+                <span className={`ml-auto rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                  {wordCounts.get(folder.id) || 0}
+                </span>
+              </button>
             )}
           </div>
 
           {/* Quick Action buttons */}
           <div
-            className={`flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-opacity ${
-              isSelected ? 'opacity-100' : ''
+            className={`flex items-center space-x-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 ${
+              isSelected ? 'sm:opacity-100' : ''
             }`}
             onClick={(e) => e.stopPropagation()}
           >
             {level === 0 && (
               <button
+                type="button"
                 onClick={() => {
                   setCreateSubParentId(folder.id);
                   setNewSubName('');
                 }}
+                aria-label={`Add a subtopic under ${folder.name}`}
                 className={`p-1 rounded hover:bg-white/20 transition-colors ${
                   isSelected ? 'text-white' : 'text-slate-400 hover:text-slate-700'
                 }`}
@@ -154,10 +169,12 @@ export function FolderTree({
               </button>
             )}
             <button
+              type="button"
               onClick={() => {
                 setEditingId(folder.id);
                 setEditingName(folder.name);
               }}
+              aria-label={`Rename ${folder.name}`}
               className={`p-1 rounded hover:bg-white/20 transition-colors ${
                 isSelected ? 'text-white' : 'text-slate-400 hover:text-slate-700'
               }`}
@@ -166,7 +183,9 @@ export function FolderTree({
               <Edit2 className="w-3.5 h-3.5" />
             </button>
             <button
+              type="button"
               onClick={() => onDeleteFolder(folder.id)}
+              aria-label={`Delete ${folder.name}`}
               className={`p-1 rounded hover:bg-red-500/20 transition-colors ${
                 isSelected ? 'text-white' : 'text-slate-400 hover:text-red-600'
               }`}
@@ -185,6 +204,7 @@ export function FolderTree({
           >
             <input
               type="text"
+              aria-label="New subtopic name"
               placeholder="Subfolder name (e.g. Climate Change)"
               value={newSubName}
               onChange={(e) => setNewSubName(e.target.value)}
@@ -225,7 +245,9 @@ export function FolderTree({
           Topics & Folders
         </h3>
         <button
+          type="button"
           onClick={() => setIsCreatingRoot(true)}
+          aria-label="Create topic folder"
           className="p-1.5 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
           title="Create Main Folder"
         >
@@ -234,16 +256,21 @@ export function FolderTree({
       </div>
 
       {/* All Folders Option */}
-      <div
-        onClick={() => onSelectFolder(null)}
-        className={`flex items-center space-x-2.5 px-3 py-2 rounded-xl text-xs font-semibold cursor-pointer transition-colors ${
+      <div>
+        <button
+          type="button"
+          onClick={() => onSelectFolder(null)}
+          aria-pressed={selectedFolderId === null}
+          className={`flex w-full items-center space-x-2.5 px-3 py-2 rounded-xl text-left text-xs font-semibold transition-colors ${
           selectedFolderId === null
             ? 'bg-blue-600 text-white shadow-sm'
             : 'text-slate-600 hover:bg-slate-100'
         }`}
       >
         <BookOpen className="w-4 h-4" />
-        <span>All Library Topics</span>
+        <span className="flex-1">All words</span>
+        <span className={`rounded-md px-1.5 py-0.5 text-[10px] ${selectedFolderId === null ? 'bg-white/20' : 'bg-slate-100 text-slate-500'}`}>{totalWords}</span>
+        </button>
       </div>
 
       {/* Root Folder Creation Form */}
@@ -251,6 +278,7 @@ export function FolderTree({
         <form onSubmit={handleCreateRoot} className="p-2.5 bg-slate-50 border border-blue-200 rounded-xl space-y-2">
           <input
             type="text"
+            aria-label="New topic name"
             placeholder="Folder name (e.g. Environment)"
             value={newRootName}
             onChange={(e) => setNewRootName(e.target.value)}
@@ -277,6 +305,9 @@ export function FolderTree({
 
       {/* Folder Hierarchy */}
       <div className="space-y-1">
+        {rootFolders.length === 0 && !isCreatingRoot && (
+          <p className="px-3 py-3 text-xs leading-relaxed text-slate-500">No topics yet. Create a folder to group related words.</p>
+        )}
         {rootFolders.map((rf) => renderFolderNode(rf, 0))}
       </div>
     </div>
