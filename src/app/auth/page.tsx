@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { GraduationCap, Mail, Lock, User, ArrowRight, CheckCircle2, ShieldCheck, BookOpen, Sparkles } from 'lucide-react';
-import { isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { clearAuthTokensFromUrl, isSupabaseConfigured, supabase } from '@/lib/supabase';
 
 export default function AuthPage() {
   const router = useRouter();
@@ -18,10 +18,16 @@ export default function AuthPage() {
   useEffect(() => {
     if (!supabase) return;
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) router.replace('/');
+      if (session) {
+        clearAuthTokensFromUrl();
+        router.replace('/');
+      }
     });
     void supabase.auth.getSession().then(({ data }) => {
-      if (data.session) router.replace('/');
+      if (data.session) {
+        clearAuthTokensFromUrl();
+        router.replace('/');
+      }
     });
     return () => listener.subscription.unsubscribe();
   }, [router]);

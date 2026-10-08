@@ -5,7 +5,7 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { StorageService } from '@/lib/storage';
 import { Folder, UserStats } from '@/types';
-import { supabase } from '@/lib/supabase';
+import { clearAuthTokensFromUrl, supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 
 interface ShellProps {
@@ -56,6 +56,7 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
       if (!active) return;
       if (error) setAuthError(error.message);
       const email = data.session?.user.email || null;
+      if (data.session) clearAuthTokensFromUrl();
       if (requireAuth && !email) router.replace('/auth');
       void loadUserData(email);
       setAuthReady(true);
@@ -64,6 +65,7 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!active) return;
       const email = session?.user.email || null;
+      if (session) clearAuthTokensFromUrl();
       if (requireAuth && !email) router.replace('/auth');
       void loadUserData(email);
     });
