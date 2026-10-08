@@ -14,10 +14,15 @@ export default function StudyPage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [vocabularies, setVocabularies] = useState<Vocabulary[]>([]);
   const [sessionQueue, setSessionQueue] = useState<Vocabulary[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    setFolders(StorageService.getFolders());
-    setVocabularies(StorageService.getVocabularies());
+    void Promise.all([StorageService.getFolders(), StorageService.getVocabularies()])
+      .then(([nextFolders, words]) => {
+        setFolders(nextFolders);
+        setVocabularies(words);
+      })
+      .catch((error) => setLoadError(error instanceof Error ? error.message : 'Unable to load study data.'));
   }, []);
 
   const handleStartStudy = (selectedFolderIds: string[] | null) => {
@@ -41,7 +46,8 @@ export default function StudyPage() {
   };
 
   const handleRecordRating = (vocabId: string, rating: Rating) => {
-    StorageService.recordReview(vocabId, rating);
+    void StorageService.recordReview(vocabId, rating)
+      .catch((error) => alert(error instanceof Error ? error.message : 'Unable to save review.'));
   };
 
   const handleFinishSession = () => {
@@ -51,6 +57,7 @@ export default function StudyPage() {
   return (
     <Shell>
       <div className="space-y-6">
+        {loadError && <p role="alert" className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{loadError}</p>}
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
             Flashcard Spaced Repetition Study

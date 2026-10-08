@@ -7,24 +7,14 @@ import { UserStats } from '@/types';
 
 interface HeaderProps {
   stats?: UserStats;
+  userEmail: string | null;
+  onSignOut: () => void;
   onSearchChange?: (term: string) => void;
   searchTerm?: string;
 }
 
-export function Header({ stats, onSearchChange, searchTerm = '' }: HeaderProps) {
-  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
-
-  const streakDays = stats?.currentStreak || 12;
-
-  const handleSimulateLogin = (email: string) => {
-    setUserEmail(email);
-    setIsAuthModalOpen(false);
-  };
-
-  const handleLogout = () => {
-    setUserEmail(null);
-  };
+export function Header({ stats, userEmail, onSignOut, onSearchChange, searchTerm = '' }: HeaderProps) {
+  const streakDays = stats?.currentStreak || 0;
 
   return (
     <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-30 shadow-sm">
@@ -60,7 +50,7 @@ export function Header({ stats, onSearchChange, searchTerm = '' }: HeaderProps) 
               {userEmail}
             </span>
             <button
-              onClick={handleLogout}
+              onClick={onSignOut}
               className="p-1 hover:bg-slate-200 rounded-lg text-slate-500 transition-colors"
               title="Sign Out"
             >

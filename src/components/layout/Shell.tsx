@@ -5,24 +5,82 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { StorageService } from '@/lib/storage';
 import { Folder, UserStats } from '@/types';
+import { supabase } from '@/lib/supabase';
+import { useRouter } from 'next/navigation';
 
 interface ShellProps {
   children: React.ReactNode;
+  requireAuth?: boolean;
 }
 
-export function Shell({ children }: ShellProps) {
-  const [mounted, setMounted] = useState(false);
+export function Shell({ children, requireAuth = true }: ShellProps) {
+  const router = useRouter();
+  const [authReady, setAuthReady] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [folders, setFolders] = useState<Folder[]>([]);
   const [stats, setStats] = useState<UserStats | undefined>(undefined);
   const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    setMounted(true);
-    setFolders(StorageService.getFolders());
-    setStats(StorageService.getUserStats());
-  }, []);
+    if (!supabase) {
+      setAuthError('Supabase is not configured. Add the project URL and publishable key to .env.local.');
+      setAuthReady(true);
+      return;
+    }
 
-  if (!mounted) {
+    let active = true;
+    const loadUserData = async (email: string | null) => {
+      setUserEmail(email);
+      if (!email) {
+        setFolders([]);
+        setStats(undefined);
+        return;
+      }
+      try {
+        const [nextFolders, nextStats] = await Promise.all([
+          StorageService.getFolders(),
+          StorageService.getUserStats(),
+        ]);
+        if (active) {
+          setFolders(nextFolders);
+          setStats(nextStats);
+          setAuthError(null);
+        }
+      } catch (error) {
+        if (active) setAuthError(error instanceof Error ? error.message : 'Unable to load your account data.');
+      }
+    };
+
+    void supabase.auth.getSession().then(({ data, error }) => {
+      if (!active) return;
+      if (error) setAuthError(error.message);
+      const email = data.session?.user.email || null;
+      if (requireAuth && !email) router.replace('/auth');
+      void loadUserData(email);
+      setAuthReady(true);
+    });
+
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!active) return;
+      const email = session?.user.email || null;
+      if (requireAuth && !email) router.replace('/auth');
+      void loadUserData(email);
+    });
+
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
+  }, [requireAuth, router]);
+
+  const handleSignOut = async () => {
+    if (!supabase) return;
+    const { error } = await supabase.auth.signOut();
+    if (error) setAuthError(error.message);
+  };
+
+  if (!authReady || (requireAuth && !userEmail)) {
     return (
       <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
         <div className="w-64 bg-slate-900 text-slate-100 min-h-screen" />
@@ -34,11 +92,15 @@ export function Shell({ children }: ShellProps) {
     );
   }
 
+  if (authError && !userEmail) {
+    return <div className="min-h-screen p-8 text-sm text-rose-700">{authError}</div>;
+  }
+
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
       <Sidebar folders={folders} />
       <div className="flex-1 flex flex-col min-w-0">
-        <Header stats={stats} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
+        <Header stats={stats} userEmail={userEmail} onSignOut={handleSignOut} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
         <main className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto">{children}</main>
       </div>
     </div>

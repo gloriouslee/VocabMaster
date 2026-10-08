@@ -1,333 +1,319 @@
-import { Folder, Vocabulary, QuizResult, MistakeLog, UserStats, VocabStatus, WordType } from '@/types';
-import { INITIAL_FOLDERS, INITIAL_VOCABULARIES } from './seedData';
-import { calculateNextReview, Rating } from './spacedRepetition';
+import { supabase } from '@/lib/supabase';
+import type { Database, Tables, TablesInsert, TablesUpdate } from '@/types/database';
+import { Folder, Vocabulary, QuizResult, MistakeLog, UserStats, WordType } from '@/types';
+import { Rating } from './spacedRepetition';
 
-const FOLDERS_KEY = 'vocabmaster_folders';
-const VOCAB_KEY = 'vocabmaster_vocabularies';
-const QUIZ_KEY = 'vocabmaster_quiz_results';
-const MISTAKES_KEY = 'vocabmaster_mistakes';
-const STATS_KEY = 'vocabmaster_user_stats';
+type FolderRow = Tables<'folders'>;
+type VocabularyRow = Tables<'vocabularies'>;
+type QuizResultRow = Tables<'quiz_results'>;
+type MistakeRow = Tables<'mistake_logs'>;
 
-function isClient(): boolean {
-  return typeof window !== 'undefined';
+function client() {
+  if (!supabase) {
+    throw new Error('Supabase is not configured. Set the public URL and publishable key.');
+  }
+  return supabase;
+}
+
+async function currentUserId(): Promise<string> {
+  const { data, error } = await client().auth.getUser();
+  if (error) throw error;
+  if (!data.user) throw new Error('Please sign in to access your study data.');
+  return data.user.id;
+}
+
+function mapFolder(row: FolderRow): Folder {
+  return {
+    id: row.id,
+    name: row.name,
+    parentId: row.parent_id,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapVocabulary(row: VocabularyRow): Vocabulary {
+  return {
+    id: row.id,
+    folderId: row.folder_id,
+    word: row.word,
+    meaning: row.meaning,
+    wordType: row.word_type as WordType,
+    phonetic: row.phonetic,
+    level: row.level,
+    example: row.example,
+    status: row.status,
+    nextReviewAt: row.next_review_at,
+    intervalDays: row.interval_days,
+    repetitions: row.repetitions,
+    easeFactor: row.ease_factor,
+    createdAt: row.created_at,
+    lastReviewedAt: row.last_reviewed_at || undefined,
+  };
+}
+
+function mapQuizResult(row: QuizResultRow, folderIds: string[] = []): QuizResult {
+  return {
+    id: row.id,
+    createdAt: row.created_at,
+    scorePercent: row.score_percent,
+    totalQuestions: row.total_questions,
+    correctCount: row.correct_count,
+    wrongCount: row.wrong_count,
+    folderIds,
+  };
+}
+
+function mapMistake(row: MistakeRow): MistakeLog {
+  return {
+    id: row.id,
+    vocabularyId: row.vocabulary_id,
+    word: row.word,
+    meaning: row.meaning,
+    userAnswer: row.user_answer,
+    correctAnswer: row.correct_answer,
+    createdAt: row.created_at,
+    resolved: row.resolved,
+  };
+}
+
+function dayKey(isoDate: string): string {
+  return isoDate.slice(0, 10);
+}
+
+function previousDay(date: string): string {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() - 1);
+  return value.toISOString().slice(0, 10);
+}
+
+function streaks(activeDates: Set<string>, today: string) {
+  const sorted = [...activeDates].sort((a, b) => b.localeCompare(a));
+  let currentStreak = 0;
+  if (sorted[0] === today || sorted[0] === previousDay(today)) {
+    let expected = sorted[0];
+    for (const date of sorted) {
+      if (date !== expected) break;
+      currentStreak += 1;
+      expected = previousDay(expected);
+    }
+  }
+
+  let bestStreak = 0;
+  let run = 0;
+  let expected: string | undefined;
+  for (const date of [...activeDates].sort()) {
+    run = expected && date === expected ? run + 1 : 1;
+    bestStreak = Math.max(bestStreak, run);
+    const next = new Date(`${date}T00:00:00.000Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    expected = next.toISOString().slice(0, 10);
+  }
+  return { currentStreak, bestStreak };
+}
+
+function mapVocabularyInput(
+  vocab: Omit<Vocabulary, 'id' | 'createdAt' | 'status' | 'nextReviewAt' | 'intervalDays' | 'repetitions' | 'easeFactor'> & Partial<Vocabulary>,
+  userId: string,
+): TablesInsert<'vocabularies'> {
+  return {
+    user_id: userId,
+    word: vocab.word.trim(),
+    meaning: vocab.meaning.trim(),
+    word_type: (vocab.wordType || 'noun') as Database['public']['Enums']['word_type'],
+    phonetic: vocab.phonetic?.trim() || '',
+    level: vocab.level?.trim() || 'Band 6.5',
+    example: vocab.example?.trim() || '',
+    folder_id: vocab.folderId || null,
+    status: vocab.status || 'new',
+    next_review_at: vocab.nextReviewAt || new Date().toISOString(),
+    interval_days: vocab.intervalDays || 0,
+    repetitions: vocab.repetitions || 0,
+    ease_factor: vocab.easeFactor || 2.5,
+    last_reviewed_at: vocab.lastReviewedAt || null,
+  };
 }
 
 export const StorageService = {
-  // --- FOLDERS ---
-  getFolders(): Folder[] {
-    if (!isClient()) return INITIAL_FOLDERS;
-    const data = localStorage.getItem(FOLDERS_KEY);
-    if (!data) {
-      localStorage.setItem(FOLDERS_KEY, JSON.stringify(INITIAL_FOLDERS));
-      return INITIAL_FOLDERS;
-    }
-    try {
-      return JSON.parse(data);
-    } catch {
-      return INITIAL_FOLDERS;
-    }
+  async getFolders(): Promise<Folder[]> {
+    const userId = await currentUserId();
+    const { data, error } = await client().from('folders').select('*').eq('user_id', userId).order('name');
+    if (error) throw error;
+    return data.map(mapFolder);
   },
 
-  saveFolder(folder: Omit<Folder, 'id' | 'createdAt'>): Folder {
-    const folders = this.getFolders();
-    const newFolder: Folder = {
-      ...folder,
-      id: 'f-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
-      createdAt: new Date().toISOString(),
+  async saveFolder(folder: Omit<Folder, 'id' | 'createdAt' | 'updatedAt'>): Promise<Folder> {
+    const userId = await currentUserId();
+    const row: TablesInsert<'folders'> = {
+      user_id: userId,
+      name: folder.name.trim(),
+      parent_id: folder.parentId,
     };
-    folders.push(newFolder);
-    if (isClient()) {
-      localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
-    }
-    return newFolder;
+    const { data, error } = await client().from('folders').insert(row).select('*').single();
+    if (error) throw error;
+    return mapFolder(data);
   },
 
-  renameFolder(id: string, newName: string): void {
-    const folders = this.getFolders().map((f) =>
-      f.id === id ? { ...f, name: newName, updatedAt: new Date().toISOString() } : f
-    );
-    if (isClient()) {
-      localStorage.setItem(FOLDERS_KEY, JSON.stringify(folders));
-    }
+  async renameFolder(id: string, newName: string): Promise<void> {
+    const userId = await currentUserId();
+    const { error } = await client().from('folders').update({ name: newName.trim() }).eq('id', id).eq('user_id', userId);
+    if (error) throw error;
   },
 
-  deleteFolder(id: string): void {
-    // Collect child folder IDs recursively
-    const allFolders = this.getFolders();
-    const idsToDelete = new Set<string>([id]);
+  async deleteFolder(id: string): Promise<void> {
+    const userId = await currentUserId();
+    const { error } = await client().from('folders').delete().eq('id', id).eq('user_id', userId);
+    if (error) throw error;
+  },
 
-    let changed = true;
-    while (changed) {
-      changed = false;
-      for (const f of allFolders) {
-        if (f.parentId && idsToDelete.has(f.parentId) && !idsToDelete.has(f.id)) {
-          idsToDelete.add(f.id);
-          changed = true;
-        }
-      }
-    }
+  async getVocabularies(): Promise<Vocabulary[]> {
+    const userId = await currentUserId();
+    const { data, error } = await client().from('vocabularies').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    if (error) throw error;
+    return data.map(mapVocabulary);
+  },
 
-    const updatedFolders = allFolders.filter((f) => !idsToDelete.has(f.id));
-    if (isClient()) {
-      localStorage.setItem(FOLDERS_KEY, JSON.stringify(updatedFolders));
-    }
+  async addVocabulary(vocab: Omit<Vocabulary, 'id' | 'createdAt' | 'status' | 'nextReviewAt' | 'intervalDays' | 'repetitions' | 'easeFactor'> & Partial<Vocabulary>): Promise<Vocabulary> {
+    const userId = await currentUserId();
+    const { data, error } = await client().from('vocabularies').insert(mapVocabularyInput(vocab, userId)).select('*').single();
+    if (error) throw error;
+    return mapVocabulary(data);
+  },
 
-    // Also reassign or delete vocabularies attached to deleted folders
-    const vocabs = this.getVocabularies().map((v) => {
-      if (v.folderId && idsToDelete.has(v.folderId)) {
-        return { ...v, folderId: null };
-      }
-      return v;
+  async bulkAddVocabularies(items: Array<Omit<Vocabulary, 'id' | 'createdAt' | 'status' | 'nextReviewAt' | 'intervalDays' | 'repetitions' | 'easeFactor'> & Partial<Vocabulary>>): Promise<Vocabulary[]> {
+    if (items.length === 0) return [];
+    const userId = await currentUserId();
+    const rows = items.map((item) => mapVocabularyInput(item, userId));
+    const { data, error } = await client().from('vocabularies').insert(rows).select('*');
+    if (error) throw error;
+    return data.map(mapVocabulary);
+  },
+
+  async updateVocabulary(id: string, updates: Partial<Vocabulary>): Promise<Vocabulary | null> {
+    const userId = await currentUserId();
+    const row: TablesUpdate<'vocabularies'> = {};
+    if (updates.folderId !== undefined) row.folder_id = updates.folderId;
+    if (updates.word !== undefined) row.word = updates.word.trim();
+    if (updates.meaning !== undefined) row.meaning = updates.meaning.trim();
+    if (updates.wordType !== undefined) row.word_type = updates.wordType as Database['public']['Enums']['word_type'];
+    if (updates.phonetic !== undefined) row.phonetic = updates.phonetic;
+    if (updates.level !== undefined) row.level = updates.level;
+    if (updates.example !== undefined) row.example = updates.example;
+    if (updates.status !== undefined) row.status = updates.status;
+    if (updates.nextReviewAt !== undefined) row.next_review_at = updates.nextReviewAt;
+    if (updates.intervalDays !== undefined) row.interval_days = updates.intervalDays;
+    if (updates.repetitions !== undefined) row.repetitions = updates.repetitions;
+    if (updates.easeFactor !== undefined) row.ease_factor = updates.easeFactor;
+    if (updates.lastReviewedAt !== undefined) row.last_reviewed_at = updates.lastReviewedAt;
+    const { data, error } = await client().from('vocabularies').update(row).eq('id', id).eq('user_id', userId).select('*').maybeSingle();
+    if (error) throw error;
+    return data ? mapVocabulary(data) : null;
+  },
+
+  async deleteVocabulary(id: string): Promise<void> {
+    const userId = await currentUserId();
+    const { error } = await client().from('vocabularies').delete().eq('id', id).eq('user_id', userId);
+    if (error) throw error;
+  },
+
+  async recordReview(id: string, rating: Rating): Promise<Vocabulary> {
+    const { data, error } = await client().rpc('record_vocabulary_review', {
+      p_vocabulary_id: id,
+      p_rating: rating,
     });
-    if (isClient()) {
-      localStorage.setItem(VOCAB_KEY, JSON.stringify(vocabs));
-    }
+    if (error) throw error;
+    return mapVocabulary(data);
   },
 
-  // --- VOCABULARIES ---
-  getVocabularies(): Vocabulary[] {
-    if (!isClient()) return INITIAL_VOCABULARIES;
-    const data = localStorage.getItem(VOCAB_KEY);
-    if (!data) {
-      localStorage.setItem(VOCAB_KEY, JSON.stringify(INITIAL_VOCABULARIES));
-      return INITIAL_VOCABULARIES;
+  async getQuizResults(): Promise<QuizResult[]> {
+    const userId = await currentUserId();
+    const [results, scopes] = await Promise.all([
+      client().from('quiz_results').select('*').eq('user_id', userId).order('created_at', { ascending: false }),
+      client().from('quiz_result_folders').select('quiz_result_id,folder_id').eq('user_id', userId),
+    ]);
+    if (results.error) throw results.error;
+    if (scopes.error) throw scopes.error;
+    const folderIds = new Map<string, string[]>();
+    for (const scope of scopes.data) {
+      folderIds.set(scope.quiz_result_id, [...(folderIds.get(scope.quiz_result_id) || []), scope.folder_id]);
     }
-    try {
-      return JSON.parse(data);
-    } catch {
-      return INITIAL_VOCABULARIES;
-    }
+    return results.data.map((row) => mapQuizResult(row, folderIds.get(row.id) || []));
   },
 
-  addVocabulary(vocab: Omit<Vocabulary, 'id' | 'createdAt' | 'status' | 'nextReviewAt' | 'intervalDays' | 'repetitions' | 'easeFactor'> & Partial<Vocabulary>): Vocabulary {
-    const vocabs = this.getVocabularies();
-    const newVocab: Vocabulary = {
-      id: 'v-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
-      word: vocab.word.trim(),
-      meaning: vocab.meaning.trim(),
-      wordType: (vocab.wordType || 'noun') as WordType,
-      phonetic: vocab.phonetic?.trim() || '',
-      level: vocab.level?.trim() || 'Band 6.5',
-      example: vocab.example?.trim() || '',
-      folderId: vocab.folderId || null,
-      status: vocab.status || 'new',
-      nextReviewAt: vocab.nextReviewAt || new Date().toISOString(),
-      intervalDays: vocab.intervalDays || 0,
-      repetitions: vocab.repetitions || 0,
-      easeFactor: vocab.easeFactor || 2.5,
-      createdAt: new Date().toISOString(),
-    };
-    vocabs.push(newVocab);
-    if (isClient()) {
-      localStorage.setItem(VOCAB_KEY, JSON.stringify(vocabs));
-    }
-    return newVocab;
-  },
-
-  bulkAddVocabularies(items: Array<Omit<Vocabulary, 'id' | 'createdAt' | 'status' | 'nextReviewAt' | 'intervalDays' | 'repetitions' | 'easeFactor'> & Partial<Vocabulary>>): Vocabulary[] {
-    const vocabs = this.getVocabularies();
-    const added: Vocabulary[] = [];
-
-    items.forEach((item) => {
-      const v: Vocabulary = {
-        id: 'v-' + Date.now() + '-' + Math.random().toString(36).substring(2, 7),
-        word: item.word.trim(),
-        meaning: item.meaning.trim(),
-        wordType: (item.wordType || 'noun') as WordType,
-        phonetic: item.phonetic?.trim() || '',
-        level: item.level?.trim() || 'Band 7.0',
-        example: item.example?.trim() || '',
-        folderId: item.folderId || null,
-        status: item.status || 'new',
-        nextReviewAt: item.nextReviewAt || new Date().toISOString(),
-        intervalDays: item.intervalDays || 0,
-        repetitions: item.repetitions || 0,
-        easeFactor: item.easeFactor || 2.5,
-        createdAt: new Date().toISOString(),
-      };
-      vocabs.push(v);
-      added.push(v);
+  async saveQuizResult(
+    result: Omit<QuizResult, 'id' | 'createdAt'>,
+    mistakes: Array<Omit<MistakeLog, 'id' | 'createdAt' | 'resolved'>> = [],
+  ): Promise<QuizResult> {
+    const { data, error } = await client().rpc('record_quiz_attempt', {
+      p_score_percent: result.scorePercent,
+      p_total_questions: result.totalQuestions,
+      p_correct_count: result.correctCount,
+      p_wrong_count: result.wrongCount,
+      p_folder_ids: result.folderIds || [],
+      p_mistakes: mistakes.map((mistake) => ({
+        vocabulary_id: mistake.vocabularyId,
+        word: mistake.word,
+        meaning: mistake.meaning,
+        user_answer: mistake.userAnswer,
+        correct_answer: mistake.correctAnswer,
+      })),
     });
-
-    if (isClient()) {
-      localStorage.setItem(VOCAB_KEY, JSON.stringify(vocabs));
-    }
-    return added;
+    if (error) throw error;
+    return mapQuizResult(data, result.folderIds || []);
   },
 
-  updateVocabulary(id: string, updates: Partial<Vocabulary>): Vocabulary | null {
-    let updatedVocab: Vocabulary | null = null;
-    const vocabs = this.getVocabularies().map((v) => {
-      if (v.id === id) {
-        updatedVocab = { ...v, ...updates };
-        return updatedVocab;
-      }
-      return v;
-    });
-
-    if (isClient()) {
-      localStorage.setItem(VOCAB_KEY, JSON.stringify(vocabs));
-    }
-    return updatedVocab;
+  async getMistakeLogs(): Promise<MistakeLog[]> {
+    const userId = await currentUserId();
+    const { data, error } = await client().from('mistake_logs').select('*').eq('user_id', userId).order('created_at', { ascending: false });
+    if (error) throw error;
+    return data.map(mapMistake);
   },
 
-  deleteVocabulary(id: string): void {
-    const vocabs = this.getVocabularies().filter((v) => v.id !== id);
-    if (isClient()) {
-      localStorage.setItem(VOCAB_KEY, JSON.stringify(vocabs));
-    }
-  },
-
-  recordReview(id: string, rating: Rating): Vocabulary | null {
-    const vocabs = this.getVocabularies();
-    const index = vocabs.findIndex((v) => v.id === id);
-    if (index === -1) return null;
-
-    const vocab = vocabs[index];
-    const sr = calculateNextReview(vocab, rating);
-
-    const updated: Vocabulary = {
-      ...vocab,
-      status: sr.status,
-      nextReviewAt: sr.nextReviewAt,
-      intervalDays: sr.intervalDays,
-      repetitions: sr.repetitions,
-      lastReviewedAt: new Date().toISOString(),
+  async addMistakeLog(log: Omit<MistakeLog, 'id' | 'createdAt' | 'resolved'>): Promise<MistakeLog> {
+    const userId = await currentUserId();
+    const row: TablesInsert<'mistake_logs'> = {
+      user_id: userId,
+      vocabulary_id: log.vocabularyId || null,
+      word: log.word,
+      meaning: log.meaning,
+      user_answer: log.userAnswer,
+      correct_answer: log.correctAnswer,
     };
-
-    vocabs[index] = updated;
-    if (isClient()) {
-      localStorage.setItem(VOCAB_KEY, JSON.stringify(vocabs));
-    }
-
-    this.recordStudyActivity(1);
-    return updated;
+    const { data, error } = await client().from('mistake_logs').insert(row).select('*').single();
+    if (error) throw error;
+    return mapMistake(data);
   },
 
-  // --- QUIZ RESULTS & MISTAKES ---
-  getQuizResults(): QuizResult[] {
-    if (!isClient()) return [];
-    const data = localStorage.getItem(QUIZ_KEY);
-    if (!data) return [];
-    try {
-      return JSON.parse(data);
-    } catch {
-      return [];
-    }
+  async resolveMistakeLog(id: string): Promise<void> {
+    const userId = await currentUserId();
+    const { error } = await client().from('mistake_logs').update({ resolved: true }).eq('id', id).eq('user_id', userId);
+    if (error) throw error;
   },
 
-  saveQuizResult(result: Omit<QuizResult, 'id' | 'createdAt'>): QuizResult {
-    const results = this.getQuizResults();
-    const newResult: QuizResult = {
-      ...result,
-      id: 'q-' + Date.now(),
-      createdAt: new Date().toISOString(),
+  async getUserStats(): Promise<UserStats> {
+    const userId = await currentUserId();
+    const [reviews, quizzes] = await Promise.all([
+      client().from('review_logs').select('reviewed_at').eq('user_id', userId),
+      client().from('quiz_results').select('created_at,total_questions').eq('user_id', userId),
+    ]);
+    if (reviews.error) throw reviews.error;
+    if (quizzes.error) throw quizzes.error;
+
+    const today = new Date().toISOString().slice(0, 10);
+    const reviewDates = reviews.data.map((row) => dayKey(row.reviewed_at));
+    const quizDates = quizzes.data.map((row) => dayKey(row.created_at));
+    const activityDates = new Set([...reviewDates, ...quizDates]);
+    const { currentStreak, bestStreak } = streaks(activityDates, today);
+    const wordsStudiedToday = reviews.data.filter((row) => dayKey(row.reviewed_at) === today).length +
+      quizzes.data.filter((row) => dayKey(row.created_at) === today).reduce((sum, row) => sum + row.total_questions, 0);
+    const lastActiveDate = [...activityDates].sort((a, b) => b.localeCompare(a))[0] || today;
+
+    return {
+      currentStreak,
+      bestStreak,
+      lastActiveDate,
+      wordsStudiedToday,
+      reviewsCompletedToday: wordsStudiedToday,
     };
-    results.unshift(newResult);
-    if (isClient()) {
-      localStorage.setItem(QUIZ_KEY, JSON.stringify(results));
-    }
-    this.recordStudyActivity(result.totalQuestions);
-    return newResult;
-  },
-
-  getMistakeLogs(): MistakeLog[] {
-    if (!isClient()) return [];
-    const data = localStorage.getItem(MISTAKES_KEY);
-    if (!data) return [];
-    try {
-      return JSON.parse(data);
-    } catch {
-      return [];
-    }
-  },
-
-  addMistakeLog(log: Omit<MistakeLog, 'id' | 'createdAt' | 'resolved'>): MistakeLog {
-    const mistakes = this.getMistakeLogs();
-    const newLog: MistakeLog = {
-      ...log,
-      id: 'm-' + Date.now() + '-' + Math.random().toString(36).substring(2, 5),
-      createdAt: new Date().toISOString(),
-      resolved: false,
-    };
-    mistakes.unshift(newLog);
-    if (isClient()) {
-      localStorage.setItem(MISTAKES_KEY, JSON.stringify(mistakes));
-    }
-    return newLog;
-  },
-
-  resolveMistakeLog(id: string): void {
-    const mistakes = this.getMistakeLogs().map((m) =>
-      m.id === id ? { ...m, resolved: true } : m
-    );
-    if (isClient()) {
-      localStorage.setItem(MISTAKES_KEY, JSON.stringify(mistakes));
-    }
-  },
-
-  // --- USER STATS & STREAK ---
-  getUserStats(): UserStats {
-    const defaultStats: UserStats = {
-      currentStreak: 12,
-      bestStreak: 35,
-      lastActiveDate: new Date().toISOString().split('T')[0],
-      wordsStudiedToday: 15,
-      reviewsCompletedToday: 24,
-    };
-    if (!isClient()) return defaultStats;
-
-    const data = localStorage.getItem(STATS_KEY);
-    if (!data) {
-      localStorage.setItem(STATS_KEY, JSON.stringify(defaultStats));
-      return defaultStats;
-    }
-    try {
-      const parsed = JSON.parse(data);
-      const todayStr = new Date().toISOString().split('T')[0];
-      // Reset daily counts if day changed
-      if (parsed.lastActiveDate !== todayStr) {
-        const yesterday = new Date();
-        yesterday.setDate(yesterday.getDate() - 1);
-        const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-        let newStreak = parsed.currentStreak || 0;
-        if (parsed.lastActiveDate === yesterdayStr) {
-          // Maintained streak
-        } else {
-          // Broken streak
-          newStreak = 1;
-        }
-
-        const updated: UserStats = {
-          ...parsed,
-          currentStreak: newStreak,
-          bestStreak: Math.max(parsed.bestStreak || 0, newStreak),
-          lastActiveDate: todayStr,
-          wordsStudiedToday: 0,
-          reviewsCompletedToday: 0,
-        };
-        localStorage.setItem(STATS_KEY, JSON.stringify(updated));
-        return updated;
-      }
-      return parsed;
-    } catch {
-      return defaultStats;
-    }
-  },
-
-  recordStudyActivity(reviewsCount: number = 1): void {
-    if (!isClient()) return;
-    const stats = this.getUserStats();
-    const todayStr = new Date().toISOString().split('T')[0];
-
-    const updated: UserStats = {
-      ...stats,
-      lastActiveDate: todayStr,
-      wordsStudiedToday: stats.wordsStudiedToday + reviewsCount,
-      reviewsCompletedToday: stats.reviewsCompletedToday + reviewsCount,
-    };
-
-    localStorage.setItem(STATS_KEY, JSON.stringify(updated));
   },
 };

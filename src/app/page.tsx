@@ -24,18 +24,23 @@ import { Vocabulary, UserStats } from '@/types';
 export default function DashboardPage() {
   const [mounted, setMounted] = useState(false);
   const [vocabularies, setVocabularies] = useState<Vocabulary[]>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [stats, setStats] = useState<UserStats>({
-    currentStreak: 12,
-    bestStreak: 35,
+    currentStreak: 0,
+    bestStreak: 0,
     lastActiveDate: new Date().toISOString().split('T')[0],
-    wordsStudiedToday: 15,
-    reviewsCompletedToday: 24,
+    wordsStudiedToday: 0,
+    reviewsCompletedToday: 0,
   });
 
   useEffect(() => {
-    setMounted(true);
-    setVocabularies(StorageService.getVocabularies());
-    setStats(StorageService.getUserStats());
+    void Promise.all([StorageService.getVocabularies(), StorageService.getUserStats()])
+      .then(([words, userStats]) => {
+        setVocabularies(words);
+        setStats(userStats);
+      })
+      .catch((error) => setLoadError(error instanceof Error ? error.message : 'Unable to load dashboard data.'))
+      .finally(() => setMounted(true));
   }, []);
 
   const totalWords = vocabularies.length;
@@ -61,6 +66,7 @@ export default function DashboardPage() {
   return (
     <Shell>
       <div className="space-y-8">
+        {loadError && <p role="alert" className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{loadError}</p>}
         {/* Page Banner Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>

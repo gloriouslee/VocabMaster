@@ -14,14 +14,11 @@ export function WordOfTheDay({ vocabularies }: WordOfTheDayProps) {
 
   useEffect(() => {
     if (vocabularies.length > 0) {
-      // Pick cumbersome or random
-      const cumbersome = vocabularies.find((v) => v.word.toLowerCase() === 'cumbersome');
-      if (cumbersome) {
-        setCurrentWord(cumbersome);
-      } else {
-        const random = vocabularies[Math.floor(Math.random() * vocabularies.length)];
-        setCurrentWord(random);
-      }
+      const day = new Date().toISOString().slice(0, 10);
+      const dayNumber = Number(day.replace(/-/g, ''));
+      setCurrentWord(vocabularies[dayNumber % vocabularies.length]);
+    } else {
+      setCurrentWord(null);
     }
   }, [vocabularies]);
 
@@ -40,7 +37,15 @@ export function WordOfTheDay({ vocabularies }: WordOfTheDayProps) {
     }
   };
 
-  if (!currentWord) return null;
+  if (!currentWord) {
+    return (
+      <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-indigo-950 p-6 rounded-2xl text-white shadow-xl border border-slate-800">
+        <h3 className="font-bold text-sm text-slate-200 uppercase tracking-wider">Word of the Day</h3>
+        <p className="text-sm text-slate-300 mt-3">Your vocabulary list is empty. Add a word or import a list to see it here.</p>
+        <Link href="/library" className="inline-block mt-4 text-xs font-semibold text-indigo-300 hover:text-white">Add vocabulary</Link>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-gradient-to-br from-slate-900 via-slate-850 to-indigo-950 p-6 rounded-2xl text-white shadow-xl border border-slate-800 relative">

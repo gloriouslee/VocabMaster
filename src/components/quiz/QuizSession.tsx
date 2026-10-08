@@ -16,7 +16,7 @@ export interface QuizQuestion {
 
 interface QuizSessionProps {
   questions: QuizQuestion[];
-  onComplete: (userAnswers: Array<{ question: QuizQuestion; selectedAnswer: string; isCorrect: boolean }>) => void;
+  onComplete: (userAnswers: Array<{ question: QuizQuestion; selectedAnswer: string; isCorrect: boolean }>) => Promise<void>;
 }
 
 export function QuizSession({ questions, onComplete }: QuizSessionProps) {
@@ -24,6 +24,7 @@ export function QuizSession({ questions, onComplete }: QuizSessionProps) {
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [answers, setAnswers] = useState<Array<{ question: QuizQuestion; selectedAnswer: string; isCorrect: boolean }>>([]);
+  const [isSaving, setIsSaving] = useState(false);
 
   const currentQ = questions[currentIndex];
 
@@ -47,9 +48,16 @@ export function QuizSession({ questions, onComplete }: QuizSessionProps) {
     setAnswers((prev) => [...prev, record]);
   };
 
-  const handleNextQuestion = () => {
+  const handleNextQuestion = async () => {
     if (currentIndex + 1 >= questions.length) {
-      onComplete([...answers]);
+      setIsSaving(true);
+      try {
+        await onComplete([...answers]);
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'Unable to save quiz results.');
+      } finally {
+        setIsSaving(false);
+      }
     } else {
       setCurrentIndex((prev) => prev + 1);
       setSelectedOption(null);
@@ -170,10 +178,11 @@ export function QuizSession({ questions, onComplete }: QuizSessionProps) {
             </button>
           ) : (
             <button
-              onClick={handleNextQuestion}
+                onClick={handleNextQuestion}
+                disabled={isSaving}
               className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-2xl text-xs transition-colors shadow-md flex items-center justify-center space-x-2"
             >
-              <span>{currentIndex + 1 < questions.length ? 'Next Question' : 'View Results'}</span>
+              <span>{isSaving ? 'Saving…' : currentIndex + 1 < questions.length ? 'Next Question' : 'View Results'}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
           )}

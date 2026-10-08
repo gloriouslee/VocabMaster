@@ -7,7 +7,7 @@ import { StorageService } from '@/lib/storage';
 
 interface MistakeReviewProps {
   mistakes: MistakeLog[];
-  onRefresh: () => void;
+  onRefresh: () => Promise<void>;
 }
 
 export function MistakeReview({ mistakes, onRefresh }: MistakeReviewProps) {
@@ -18,9 +18,13 @@ export function MistakeReview({ mistakes, onRefresh }: MistakeReviewProps) {
 
   const displayList = activeTab === 'unresolved' ? unresolved : resolved;
 
-  const handleResolve = (id: string) => {
-    StorageService.resolveMistakeLog(id);
-    onRefresh();
+  const handleResolve = async (id: string) => {
+    try {
+      await StorageService.resolveMistakeLog(id);
+      await onRefresh();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to update mistake.');
+    }
   };
 
   return (

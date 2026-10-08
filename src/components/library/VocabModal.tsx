@@ -7,7 +7,7 @@ import { Vocabulary, Folder, WordType, VocabStatus } from '@/types';
 interface VocabModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (vocabData: Partial<Vocabulary>) => void;
+  onSave: (vocabData: Partial<Vocabulary>) => Promise<void>;
   folders: Folder[];
   initialData?: Vocabulary | null;
 }
@@ -27,6 +27,7 @@ export function VocabModal({
   const [example, setExample] = useState('');
   const [folderId, setFolderId] = useState<string | null>(null);
   const [status, setStatus] = useState<VocabStatus>('new');
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (initialData) {
@@ -52,11 +53,13 @@ export function VocabModal({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!word.trim() || !meaning.trim()) return;
 
-    onSave({
+    setIsSaving(true);
+    try {
+      await onSave({
       word: word.trim(),
       meaning: meaning.trim(),
       wordType,
@@ -65,8 +68,13 @@ export function VocabModal({
       example: example.trim(),
       folderId: folderId || null,
       status,
-    });
-    onClose();
+      });
+      onClose();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to save vocabulary.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -201,10 +209,11 @@ export function VocabModal({
             </button>
             <button
               type="submit"
+              disabled={isSaving}
               className="inline-flex items-center space-x-2 px-5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-semibold transition-colors shadow-sm"
             >
               <Save className="w-4 h-4" />
-              <span>Save Vocabulary</span>
+              <span>{isSaving ? 'Saving…' : 'Save Vocabulary'}</span>
             </button>
           </div>
         </form>

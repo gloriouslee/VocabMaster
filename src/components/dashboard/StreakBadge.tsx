@@ -7,8 +7,8 @@ interface StreakBadgeProps {
 }
 
 export function StreakBadge({ stats }: StreakBadgeProps) {
-  const currentStreak = stats.currentStreak || 12;
-  const bestStreak = stats.bestStreak || 35;
+  const currentStreak = stats.currentStreak;
+  const bestStreak = stats.bestStreak;
 
   return (
     <div className="bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 p-6 rounded-2xl text-white shadow-lg shadow-orange-500/20 relative overflow-hidden flex flex-col justify-between">

@@ -47,7 +47,7 @@ export interface QuizResult {
 
 export interface MistakeLog {
   id: string;
-  vocabularyId: string;
+  vocabularyId: string | null;
   word: string;
   meaning: string;
   userAnswer: string;

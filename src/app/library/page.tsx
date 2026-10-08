@@ -13,51 +13,77 @@ export default function LibraryPage() {
   const [folders, setFolders] = useState<Folder[]>([]);
   const [vocabularies, setVocabularies] = useState<Vocabulary[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVocab, setEditingVocab] = useState<Vocabulary | null>(null);
 
-  const refreshData = () => {
-    setFolders(StorageService.getFolders());
-    setVocabularies(StorageService.getVocabularies());
+  const refreshData = async () => {
+    const [nextFolders, nextVocabularies] = await Promise.all([
+      StorageService.getFolders(),
+      StorageService.getVocabularies(),
+    ]);
+    setFolders(nextFolders);
+    setVocabularies(nextVocabularies);
   };
 
   useEffect(() => {
-    setMounted(true);
-    refreshData();
+    void refreshData()
+      .catch((error) => setLoadError(error instanceof Error ? error.message : 'Unable to load your library.'))
+      .finally(() => setMounted(true));
   }, []);
 
-  const handleCreateFolder = (name: string, parentId: string | null) => {
-    StorageService.saveFolder({ name, parentId });
-    refreshData();
+  const handleCreateFolder = async (name: string, parentId: string | null) => {
+    try {
+      await StorageService.saveFolder({ name, parentId });
+      await refreshData();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to create folder.');
+    }
   };
 
-  const handleRenameFolder = (id: string, newName: string) => {
-    StorageService.renameFolder(id, newName);
-    refreshData();
+  const handleRenameFolder = async (id: string, newName: string) => {
+    try {
+      await StorageService.renameFolder(id, newName);
+      await refreshData();
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to rename folder.');
+    }
   };
 
-  const handleDeleteFolder = (id: string) => {
+  const handleDeleteFolder = async (id: string) => {
     if (confirm('Are you sure you want to delete this folder and its subfolders?')) {
-      StorageService.deleteFolder(id);
-      if (selectedFolderId === id) setSelectedFolderId(null);
-      refreshData();
+      try {
+        await StorageService.deleteFolder(id);
+        if (selectedFolderId === id) setSelectedFolderId(null);
+        await refreshData();
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'Unable to delete folder.');
+      }
     }
   };
 
-  const handleSaveVocab = (vocabData: Partial<Vocabulary>) => {
-    if (editingVocab) {
-      StorageService.updateVocabulary(editingVocab.id, vocabData);
-    } else {
-      StorageService.addVocabulary(vocabData as any);
+  const handleSaveVocab = async (vocabData: Partial<Vocabulary>) => {
+    try {
+      if (editingVocab) {
+        await StorageService.updateVocabulary(editingVocab.id, vocabData);
+      } else {
+        await StorageService.addVocabulary(vocabData as any);
+      }
+      await refreshData();
+    } catch (error) {
+      throw error;
     }
-    refreshData();
   };
 
-  const handleDeleteVocab = (id: string) => {
+  const handleDeleteVocab = async (id: string) => {
     if (confirm('Are you sure you want to delete this word from your library?')) {
-      StorageService.deleteVocabulary(id);
-      refreshData();
+      try {
+        await StorageService.deleteVocabulary(id);
+        await refreshData();
+      } catch (error) {
+        alert(error instanceof Error ? error.message : 'Unable to delete vocabulary.');
+      }
     }
   };
 
@@ -78,6 +104,7 @@ export default function LibraryPage() {
   return (
     <Shell>
       <div className="space-y-6">
+        {loadError && <p role="alert" className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{loadError}</p>}
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900 tracking-tight">
             Vocabulary Library & Topics

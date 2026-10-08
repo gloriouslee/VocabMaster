@@ -30,56 +30,10 @@ export interface ConfirmImportPayload {
 interface ImportWizardProps {
   existingVocabularies: Vocabulary[];
   folders: Folder[];
-  onConfirmImport: (payload: ConfirmImportPayload) => void;
+  onConfirmImport: (payload: ConfirmImportPayload) => Promise<void>;
 }
 
-const SAMPLE_TEMPLATE_DATA = [
-  {
-    Word: 'Mitigate',
-    'Vietnamese Meaning': 'Giảm thiểu, làm dịu bớt',
-    'Word Type': 'verb',
-    Phonetic: '/ˈmɪt.ɪ.ɡeɪt/',
-    Level: 'Band 7.5',
-    'Example Sentence': 'Governments must mitigate climate change impacts through sustainable policies.',
-    Folder: 'Climate Change'
-  },
-  {
-    Word: 'Cumbersome',
-    'Vietnamese Meaning': 'Cồng kềnh, phức tạp',
-    'Word Type': 'adjective',
-    Phonetic: '/ˈkʌm.bə.səm/',
-    Level: 'Band 8.0',
-    'Example Sentence': 'Traditional banking procedures are often cumbersome compared to modern apps.',
-    Folder: 'Banking'
-  },
-  {
-    Word: 'Empirical',
-    'Vietnamese Meaning': 'Dựa trên thực nghiệm',
-    'Word Type': 'adjective',
-    Phonetic: '/ɪmˈpɪr.ɪ.kəl/',
-    Level: 'Band 8.0',
-    'Example Sentence': 'Researchers must provide empirical evidence to support their scientific claims.',
-    Folder: 'Research'
-  },
-  {
-    Word: 'Biodiversity',
-    'Vietnamese Meaning': 'Đa dạng sinh học',
-    'Word Type': 'noun',
-    Phonetic: '/ˌbaɪ.əʊ.daɪˈvɜː.sə.ti/',
-    Level: 'Band 7.0',
-    'Example Sentence': 'Deforestation causes severe loss of biodiversity in tropical rainforests.',
-    Folder: 'Climate Change'
-  },
-  {
-    Word: 'Allocate',
-    'Vietnamese Meaning': 'Phân bổ, chỉ định',
-    'Word Type': 'verb',
-    Phonetic: '/ˈæl.ə.keɪt/',
-    Level: 'Band 7.5',
-    'Example Sentence': 'The board decided to allocate funds for research projects.',
-    Folder: 'Research'
-  }
-];
+const TEMPLATE_HEADERS = ['Word', 'Vietnamese Meaning', 'Word Type', 'Phonetic', 'Level', 'Example Sentence', 'Folder'];
 
 export function ImportWizard({
   existingVocabularies,
@@ -92,11 +46,12 @@ export function ImportWizard({
   const [targetFolderId, setTargetFolderId] = useState<string | null>(folders[0]?.id || null);
   const [newFolderName, setNewFolderName] = useState('');
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
 
   const handleDownloadTemplate = (type: 'xlsx' | 'csv') => {
-    const worksheet = XLSX.utils.json_to_sheet(SAMPLE_TEMPLATE_DATA);
+    const worksheet = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS]);
 
     if (type === 'xlsx') {
       const workbook = XLSX.utils.book_new();
@@ -187,7 +142,7 @@ export function ImportWizard({
     );
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     const validRecords = records.filter((r) => r.status === 'valid');
     if (validRecords.length === 0) {
       alert('No valid records to import.');
@@ -199,12 +154,20 @@ export function ImportWizard({
       return;
     }
 
-    onConfirmImport({
-      records: validRecords,
-      targetFolderId: folderSelectionMode === 'existing' ? targetFolderId : null,
-      newFolderName: folderSelectionMode === 'new' ? newFolderName.trim() : null,
-      useFileFolders: folderSelectionMode === 'file',
-    });
+    setSaving(true);
+    setErrorMsg(null);
+    try {
+      await onConfirmImport({
+        records: validRecords,
+        targetFolderId: folderSelectionMode === 'existing' ? targetFolderId : null,
+        newFolderName: folderSelectionMode === 'new' ? newFolderName.trim() : null,
+        useFileFolders: folderSelectionMode === 'file',
+      });
+    } catch (error) {
+      setErrorMsg(error instanceof Error ? error.message : 'Unable to save imported vocabulary.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -483,11 +446,11 @@ export function ImportWizard({
               </button>
               <button
                 onClick={handleConfirm}
-                disabled={validCount === 0}
+                disabled={validCount === 0 || saving}
                 className="inline-flex items-center space-x-1.5 px-5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl text-xs transition-colors shadow-sm"
               >
                 <Check className="w-4 h-4" />
-                <span>Confirm Import ({validCount} Valid)</span>
+                <span>{saving ? 'Saving…' : `Confirm Import (${validCount} Valid)`}</span>
               </button>
             </div>
           </div>
