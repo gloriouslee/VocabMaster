@@ -9,6 +9,9 @@ interface StreakBadgeProps {
 export function StreakBadge({ stats }: StreakBadgeProps) {
   const currentStreak = stats.currentStreak;
   const bestStreak = stats.bestStreak;
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const activeToday = stats.lastActiveDate === todayKey && stats.wordsStudiedToday > 0;
 
   return (
     <div className="bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 p-6 rounded-2xl text-white shadow-lg shadow-orange-500/20 relative overflow-hidden flex flex-col justify-between">
@@ -31,7 +34,9 @@ export function StreakBadge({ stats }: StreakBadgeProps) {
             {currentStreak} <span className="text-lg font-medium text-amber-100">Days</span>
           </h2>
           <p className="text-xs text-amber-100 mt-1">
-            Keep reviewing daily to reach the target 7-day retention habit!
+            {activeToday
+              ? 'You studied today. Your streak is safe.'
+              : 'Review a few cards today to keep your streak going.'}
           </p>
         </div>
       </div>

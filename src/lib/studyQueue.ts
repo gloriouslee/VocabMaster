@@ -1,19 +1,25 @@
 import { Vocabulary } from '@/types';
 import { shuffle } from './shuffle';
 
-export const NEW_CARD_LIMITS = [10, 20, 30, 0] as const; // 0 = no limit
+export interface StudyQueue {
+  queue: Vocabulary[];
+  /** Reviews left out because of the per-session cap; they stay due for next time. */
+  deferredReviews: number;
+}
 
 const dueTime = (word: Vocabulary) => new Date(word.nextReviewAt).getTime();
 
 /**
- * Orders a study queue: reviews first by how overdue they are, with new cards
- * (capped by `newLimit`, 0 = unlimited) interleaved roughly every fourth card
- * so a session never opens with a wall of unfamiliar words.
+ * Orders a study queue: the most overdue reviews first (capped by `maxReviews`,
+ * 0 = unlimited), with new cards (capped by `newLimit`, null = unlimited)
+ * interleaved roughly every third card so a session never opens with a wall of
+ * unfamiliar words.
  */
-export function buildStudyQueue(words: Vocabulary[], newLimit: number): Vocabulary[] {
-  const reviews = words.filter((word) => word.status !== 'new').sort((a, b) => dueTime(a) - dueTime(b));
+export function buildStudyQueue(words: Vocabulary[], newLimit: number | null, maxReviews = 0): StudyQueue {
+  const allReviews = words.filter((word) => word.status !== 'new').sort((a, b) => dueTime(a) - dueTime(b));
+  const reviews = maxReviews > 0 ? allReviews.slice(0, maxReviews) : allReviews;
   const fresh = shuffle(words.filter((word) => word.status === 'new'));
-  const newCards = newLimit > 0 ? fresh.slice(0, newLimit) : fresh;
+  const newCards = newLimit === null ? fresh : fresh.slice(0, newLimit);
 
   const queue: Vocabulary[] = [];
   let newIndex = 0;
@@ -21,5 +27,5 @@ export function buildStudyQueue(words: Vocabulary[], newLimit: number): Vocabula
     queue.push(word);
     if ((index + 1) % 3 === 0 && newIndex < newCards.length) queue.push(newCards[newIndex++]);
   });
-  return queue.concat(newCards.slice(newIndex));
+  return { queue: queue.concat(newCards.slice(newIndex)), deferredReviews: allReviews.length - reviews.length };
 }

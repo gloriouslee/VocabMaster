@@ -17,14 +17,18 @@ import { Shell } from '@/components/layout/Shell';
 import { StatCard } from '@/components/dashboard/StatCard';
 import { DailyProgress } from '@/components/dashboard/DailyProgress';
 import { StreakBadge } from '@/components/dashboard/StreakBadge';
+import { DueForecast } from '@/components/dashboard/DueForecast';
 import { WordOfTheDay } from '@/components/dashboard/WordOfTheDay';
 import { StorageService } from '@/lib/storage';
 import { Vocabulary, UserStats } from '@/types';
+import { DEFAULT_DAILY_PREFS, DailyPrefs, TodayActivity, countDueReviews, dueForecast, loadDailyPrefs, remainingNewToday, saveDailyPrefs } from '@/lib/dailyPlan';
 
 export default function DashboardPage() {
   const [mounted, setMounted] = useState(false);
   const [vocabularies, setVocabularies] = useState<Vocabulary[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [dailyPrefs, setDailyPrefs] = useState<DailyPrefs>(DEFAULT_DAILY_PREFS);
+  const [activity, setActivity] = useState<TodayActivity>({ reviewsToday: 0, newToday: 0 });
   const [stats, setStats] = useState<UserStats>({
     currentStreak: 0,
     bestStreak: 0,
@@ -34,10 +38,16 @@ export default function DashboardPage() {
   });
 
   useEffect(() => {
-    void Promise.all([StorageService.getVocabularies(), StorageService.getUserStats()])
-      .then(([words, userStats]) => {
+    setDailyPrefs(loadDailyPrefs());
+    void Promise.all([
+      StorageService.getVocabularies(),
+      StorageService.getUserStats(),
+      StorageService.getTodayActivity().catch(() => ({ reviewsToday: 0, newToday: 0 })),
+    ])
+      .then(([words, userStats, todayActivity]) => {
         setVocabularies(words);
         setStats(userStats);
+        setActivity(todayActivity);
       })
       .catch((error) => setLoadError(error instanceof Error ? error.message : 'Unable to load dashboard data.'))
       .finally(() => setMounted(true));
@@ -47,7 +57,16 @@ export default function DashboardPage() {
   const newWords = vocabularies.filter((v) => v.status === 'new').length;
   const learningWords = vocabularies.filter((v) => v.status === 'learning').length;
   const masteredWords = vocabularies.filter((v) => v.status === 'mastered').length;
-  const dueWords = vocabularies.filter((v) => new Date(v.nextReviewAt).getTime() <= Date.now()).length;
+  const dueWords = countDueReviews(vocabularies);
+  const newAllowance = remainingNewToday(dailyPrefs, activity);
+  const newAvailable = newAllowance === null ? newWords : Math.min(newAllowance, newWords);
+  const forecast = dueForecast(vocabularies);
+
+  const handleChangeGoal = (dailyGoal: number) => {
+    const next = { ...dailyPrefs, dailyGoal };
+    setDailyPrefs(next);
+    saveDailyPrefs(next);
+  };
 
   if (!mounted) {
     return (
@@ -85,7 +104,7 @@ export default function DashboardPage() {
               className="inline-flex items-center space-x-2 px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-xs shadow-md shadow-blue-500/20 transition-colors"
             >
               <Play className="w-4 h-4 fill-white" />
-              <span>Start Daily Review</span>
+              <span>Start Today&apos;s Session</span>
             </Link>
             <Link
               href="/import"
@@ -139,12 +158,21 @@ export default function DashboardPage() {
         {/* Middle Grid: Daily Progress & Streak */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2">
-            <DailyProgress stats={stats} dailyTarget={20} />
+            <DailyProgress
+              dailyGoal={dailyPrefs.dailyGoal}
+              onChangeGoal={handleChangeGoal}
+              reviewsToday={activity.reviewsToday}
+              newToday={activity.newToday}
+              dueNow={dueWords}
+              newAvailable={newAvailable}
+            />
           </div>
           <div>
             <StreakBadge stats={stats} />
           </div>
         </div>
+
+        <DueForecast days={forecast} />
 
         {/* Bottom Grid: Word of the Day & Quick Actions */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -5,14 +5,21 @@ import Link from 'next/link';
 import { ChevronDown, ChevronRight, Folder as FolderIcon, Layers, Play } from 'lucide-react';
 import { Folder, Vocabulary } from '@/types';
 import { getFolderScopeIds } from '@/lib/folderScope';
-import { NEW_CARD_LIMITS } from '@/lib/studyQueue';
+import {
+  BACKLOG_RESTART_THRESHOLD,
+  DailyPrefs,
+  MAX_REVIEW_OPTIONS,
+  NEW_PER_DAY_OPTIONS,
+  TodayActivity,
+  estimateMinutes,
+  remainingNewToday,
+} from '@/lib/dailyPlan';
 import { STUDY_MODE_LABELS, StudyMode } from '@/lib/cards';
 
 export interface StudyOptions {
   /** Folder ids (already expanded to include subfolders), or null for the whole library. */
   folderIds: string[] | null;
   includeNotDue: boolean;
-  newLimit: number;
   mode: StudyMode;
 }
 
@@ -22,7 +29,10 @@ interface ScopeSelectorProps {
   isLoading?: boolean;
   message?: string | null;
   initialMode: StudyMode;
-  initialNewLimit: number;
+  dailyPrefs: DailyPrefs;
+  activity: TodayActivity;
+  onChangePrefs: (prefs: DailyPrefs) => void;
+  onSpreadBacklog: () => void;
   initialPracticeAhead?: boolean;
   onStartStudy: (options: StudyOptions) => void;
 }
@@ -33,14 +43,16 @@ export function ScopeSelector({
   isLoading = false,
   message,
   initialMode,
-  initialNewLimit,
+  dailyPrefs,
+  activity,
+  onChangePrefs,
+  onSpreadBacklog,
   initialPracticeAhead = false,
   onStartStudy,
 }: ScopeSelectorProps) {
   const [showOptions, setShowOptions] = useState(initialPracticeAhead);
   const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
   const [includeNotDue, setIncludeNotDue] = useState(initialPracticeAhead);
-  const [newLimit, setNewLimit] = useState(initialNewLimit);
   const [mode, setMode] = useState<StudyMode>(initialMode);
   const [collapsedIds, setCollapsedIds] = useState<Set<string>>(new Set());
 
@@ -58,8 +70,13 @@ export function ScopeSelector({
   const scoped = vocabularies.filter(inScope);
   const dueReviews = scoped.filter((word) => word.status !== 'new' && isDue(word)).length;
   const newWords = scoped.filter((word) => word.status === 'new').length;
-  const newCount = newLimit > 0 ? Math.min(newLimit, newWords) : newWords;
-  const availableCount = includeNotDue ? scoped.length : dueReviews + newCount;
+  const newAllowance = remainingNewToday(dailyPrefs, activity);
+  const newCount = newAllowance === null ? newWords : Math.min(newAllowance, newWords);
+  const sessionReviews = !includeNotDue && dailyPrefs.maxReviews > 0 ? Math.min(dailyPrefs.maxReviews, dueReviews) : dueReviews;
+  const aheadReviews = scoped.filter((word) => word.status !== 'new').length;
+  const availableCount = includeNotDue ? aheadReviews + newCount : sessionReviews + newCount;
+  const deferred = includeNotDue ? 0 : dueReviews - sessionReviews;
+  const overdueTotal = vocabularies.filter((word) => word.status !== 'new' && new Date(word.nextReviewAt).getTime() <= now).length;
 
   const countFor = (folderId: string) => {
     const ids = getFolderScopeIds(folders, folderId);
@@ -91,7 +108,6 @@ export function ScopeSelector({
     onStartStudy({
       folderIds: scopeIds ? [...scopeIds] : null,
       includeNotDue,
-      newLimit,
       mode,
     });
 
@@ -140,7 +156,7 @@ export function ScopeSelector({
     ? 'Loading library…'
     : includeNotDue
       ? `Practice ${availableCount} cards`
-      : `Review ${availableCount} due ${availableCount === 1 ? 'card' : 'cards'}`;
+      : `Start today's session · ${availableCount} ${availableCount === 1 ? 'card' : 'cards'} (~${estimateMinutes(availableCount)} min)`;
 
   return (
     <div className="mx-auto max-w-2xl space-y-5 rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm">
@@ -152,15 +168,33 @@ export function ScopeSelector({
         <p className="mx-auto max-w-md text-sm text-slate-500">
           {isLoading
             ? 'Loading your cards…'
-            : `${dueReviews} due for review · ${newWords} new ${newWords === 1 ? 'word' : 'words'} waiting`}
+            : `${dueReviews} due for review · ${newCount} of ${newWords} new ${newWords === 1 ? 'word' : 'words'} available today`}
         </p>
       </div>
 
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded-xl bg-amber-50 p-3"><p className="text-lg font-extrabold text-amber-900">{dueReviews}</p><p className="text-[11px] font-semibold uppercase text-amber-700">Due</p></div>
-        <div className="rounded-xl bg-blue-50 p-3"><p className="text-lg font-extrabold text-blue-900">{newCount}</p><p className="text-[11px] font-semibold uppercase text-blue-700">New today</p></div>
+        <div className="rounded-xl bg-blue-50 p-3"><p className="text-lg font-extrabold text-blue-900">{newCount}</p><p className="text-[11px] font-semibold uppercase text-blue-700">New to learn</p></div>
         <div className="rounded-xl bg-emerald-50 p-3"><p className="text-lg font-extrabold text-emerald-900">{vocabularies.filter((word) => word.status === 'mastered').length}</p><p className="text-[11px] font-semibold uppercase text-emerald-700">Mastered</p></div>
       </div>
+
+      {activity.reviewsToday > 0 && (
+        <p className="text-center text-xs text-slate-500">
+          Already today: {activity.reviewsToday} {activity.reviewsToday === 1 ? 'card' : 'cards'} reviewed, {activity.newToday} new {activity.newToday === 1 ? 'word' : 'words'} learned.
+        </p>
+      )}
+      {deferred > 0 && (
+        <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+          Sessions are capped at {dailyPrefs.maxReviews} reviews, so {deferred} more stay due for your next session. You can change the cap under Customize.
+        </p>
+      )}
+      {overdueTotal >= BACKLOG_RESTART_THRESHOLD && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <p className="font-semibold">{overdueTotal} cards are overdue</p>
+          <p className="mt-1 text-xs">A big backlog is discouraging. Keep the {dailyPrefs.maxReviews > 0 ? dailyPrefs.maxReviews : 50} most overdue cards for today and spread the rest over the next 7 days.</p>
+          <button type="button" onClick={onSpreadBacklog} className="mt-2 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-amber-700">Spread my backlog</button>
+        </div>
+      )}
 
       {message && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{message}</p>}
 
@@ -206,10 +240,18 @@ export function ScopeSelector({
                 </select>
               </label>
               <label className="space-y-1 text-xs font-semibold text-slate-600">
-                New words per session
-                <select value={newLimit} onChange={(event) => setNewLimit(Number(event.target.value))} className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-800">
-                  {NEW_CARD_LIMITS.map((value) => (
+                New words per day
+                <select value={dailyPrefs.newPerDay} onChange={(event) => onChangePrefs({ ...dailyPrefs, newPerDay: Number(event.target.value) })} className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-800">
+                  {NEW_PER_DAY_OPTIONS.map((value) => (
                     <option key={value} value={value}>{value === 0 ? 'No limit' : `${value} new words`}</option>
+                  ))}
+                </select>
+              </label>
+              <label className="space-y-1 text-xs font-semibold text-slate-600 sm:col-span-2">
+                Most reviews per session
+                <select value={dailyPrefs.maxReviews} onChange={(event) => onChangePrefs({ ...dailyPrefs, maxReviews: Number(event.target.value) })} className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-800">
+                  {MAX_REVIEW_OPTIONS.map((value) => (
+                    <option key={value} value={value}>{value === 0 ? 'No cap' : `${value} reviews`}</option>
                   ))}
                 </select>
               </label>
@@ -219,7 +261,7 @@ export function ScopeSelector({
               <input type="checkbox" checked={includeNotDue} onChange={(event) => setIncludeNotDue(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600" />
               <span>
                 <span className="block text-sm font-bold text-slate-900">Practice ahead</span>
-                <span className="block text-xs text-slate-500">Include cards that are not due yet ({vocabularies.length} total).</span>
+                <span className="block text-xs text-slate-500">Include cards that are not due yet ({vocabularies.length} total). Ignores the review cap.</span>
               </span>
             </label>
 

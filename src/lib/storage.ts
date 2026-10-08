@@ -2,6 +2,7 @@ import { supabase } from '@/lib/supabase';
 import type { Database, Tables, TablesInsert, TablesUpdate } from '@/types/database';
 import { Folder, Vocabulary, QuizResult, MistakeLog, UserStats, WordType } from '@/types';
 import { Rating } from './spacedRepetition';
+import type { TodayActivity } from './dailyPlan';
 
 type FolderRow = Tables<'folders'>;
 type VocabularyRow = Tables<'vocabularies'>;
@@ -107,8 +108,15 @@ function mapMistake(row: MistakeRow): MistakeLog {
   };
 }
 
+/** Calendar day (YYYY-MM-DD) in the learner's local timezone, so "today" rolls over at local midnight. */
+function localDayKey(date: Date): string {
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${date.getFullYear()}-${month}-${day}`;
+}
+
 function dayKey(isoDate: string): string {
-  return isoDate.slice(0, 10);
+  return localDayKey(new Date(isoDate));
 }
 
 function previousDay(date: string): string {
@@ -271,6 +279,48 @@ export const StorageService = {
     return counts;
   },
 
+  /** Flashcard reviews done since local midnight, and how many of those words were seen for the first time. */
+  async getTodayActivity(): Promise<TodayActivity> {
+    const userId = await currentUserId();
+    const midnight = new Date();
+    midnight.setHours(0, 0, 0, 0);
+    const since = midnight.toISOString();
+    const todayLogs = await client()
+      .from('review_logs')
+      .select('vocabulary_id')
+      .eq('user_id', userId)
+      .gte('reviewed_at', since);
+    if (todayLogs.error) throw todayLogs.error;
+    const todayIds = [...new Set(todayLogs.data.map((row) => row.vocabulary_id))];
+    if (todayIds.length === 0) return { reviewsToday: 0, newToday: 0 };
+
+    const earlier = await client()
+      .from('review_logs')
+      .select('vocabulary_id')
+      .eq('user_id', userId)
+      .lt('reviewed_at', since)
+      .in('vocabulary_id', todayIds);
+    if (earlier.error) throw earlier.error;
+    const seenBefore = new Set(earlier.data.map((row) => row.vocabulary_id));
+    return {
+      reviewsToday: todayLogs.data.length,
+      newToday: todayIds.filter((id) => !seenBefore.has(id)).length,
+    };
+  },
+
+  /** Spreads the given overdue cards across the next `days` days so a backlog becomes manageable. */
+  async spreadOverdue(ids: string[], days: number): Promise<void> {
+    const perDay = Math.ceil(ids.length / days);
+    const dayMs = 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    for (let start = 0; start < ids.length; start += 10) {
+      await Promise.all(ids.slice(start, start + 10).map((id, offset) => {
+        const dayOffset = Math.floor((start + offset) / perDay);
+        return this.updateVocabulary(id, { nextReviewAt: new Date(now + dayOffset * dayMs).toISOString() });
+      }));
+    }
+  },
+
   async getActiveStudySession(): Promise<StudySession | null> {
     const userId = await currentUserId();
     const { data, error } = await client()
@@ -399,7 +449,7 @@ export const StorageService = {
     if (reviews.error) throw reviews.error;
     if (quizzes.error) throw quizzes.error;
 
-    const today = new Date().toISOString().slice(0, 10);
+    const today = localDayKey(new Date());
     const reviewDates = reviews.data.map((row) => dayKey(row.reviewed_at));
     const quizDates = quizzes.data.map((row) => dayKey(row.created_at));
     const activityDates = new Set([...reviewDates, ...quizDates]);

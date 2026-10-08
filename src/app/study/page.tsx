@@ -9,6 +9,7 @@ import { StorageService } from '@/lib/storage';
 import { Folder, Vocabulary } from '@/types';
 import { Rating } from '@/lib/spacedRepetition';
 import { buildStudyQueue } from '@/lib/studyQueue';
+import { DEFAULT_DAILY_PREFS, DailyPrefs, TodayActivity, loadDailyPrefs, remainingNewToday, saveDailyPrefs } from '@/lib/dailyPlan';
 import { StudyMode } from '@/lib/cards';
 
 const PREFS_KEY = 'vocabmaster.studyPrefs';
@@ -25,19 +26,20 @@ export default function StudyPage() {
   const [isStarting, setIsStarting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [lapseCounts, setLapseCounts] = useState<Map<string, number>>(new Map());
-  const [prefs, setPrefs] = useState<{ mode: StudyMode; newLimit: number }>({ mode: 'mixed', newLimit: 20 });
+  const [prefs, setPrefs] = useState<{ mode: StudyMode }>({ mode: 'mixed' });
+  const [dailyPrefs, setDailyPrefs] = useState<DailyPrefs>(DEFAULT_DAILY_PREFS);
+  const [activity, setActivity] = useState<TodayActivity>({ reviewsToday: 0, newToday: 0 });
   const [prefsReady, setPrefsReady] = useState(false);
   const [practiceAhead, setPracticeAhead] = useState(false);
 
   useEffect(() => {
     try {
       const saved = JSON.parse(window.localStorage.getItem(PREFS_KEY) || 'null');
-      if (saved && STUDY_MODES.includes(saved.mode) && typeof saved.newLimit === 'number') {
-        setPrefs({ mode: saved.mode, newLimit: saved.newLimit });
-      }
+      if (saved && STUDY_MODES.includes(saved.mode)) setPrefs({ mode: saved.mode });
     } catch {
       // Ignore unreadable preferences and keep the defaults.
     }
+    setDailyPrefs(loadDailyPrefs());
     setPrefsReady(true);
   }, []);
 
@@ -49,9 +51,11 @@ export default function StudyPage() {
       StorageService.getFolders(),
       StorageService.getVocabularies(),
       StorageService.getActiveStudySession(),
+      StorageService.getTodayActivity().catch(() => ({ reviewsToday: 0, newToday: 0 })),
     ])
-      .then(async ([nextFolders, words, savedSession]) => {
+      .then(async ([nextFolders, words, savedSession, todayActivity]) => {
         setFolders(nextFolders);
+        setActivity(todayActivity);
         setVocabularies(words);
         if (!savedSession) return;
 
@@ -96,8 +100,8 @@ export default function StudyPage() {
 
   const handleStartStudy = (options: StudyOptions) => {
     setMessage(null);
-    window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: options.mode, newLimit: options.newLimit }));
-    setPrefs({ mode: options.mode, newLimit: options.newLimit });
+    window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: options.mode }));
+    setPrefs({ mode: options.mode });
 
     const folderSet = options.folderIds ? new Set(options.folderIds) : null;
     let pool = vocabularies.filter((word) => !folderSet || (word.folderId && folderSet.has(word.folderId)));
@@ -113,7 +117,42 @@ export default function StudyPage() {
         return;
       }
     }
-    saveAndStart(buildStudyQueue(pool, options.newLimit));
+    const { queue } = buildStudyQueue(
+      pool,
+      remainingNewToday(dailyPrefs, activity),
+      options.includeNotDue ? 0 : dailyPrefs.maxReviews,
+    );
+    if (queue.length === 0) {
+      setMessage("You have reached today's new-word limit and nothing else is due. Raise the limit or turn on practice ahead.");
+      return;
+    }
+    saveAndStart(queue);
+  };
+
+  const handleChangePrefs = (next: DailyPrefs) => {
+    setDailyPrefs(next);
+    saveDailyPrefs(next);
+  };
+
+  const handleSpreadBacklog = async () => {
+    const now = Date.now();
+    const overdue = vocabularies
+      .filter((word) => word.status !== 'new' && new Date(word.nextReviewAt).getTime() <= now)
+      .sort((a, b) => new Date(a.nextReviewAt).getTime() - new Date(b.nextReviewAt).getTime());
+    const keep = dailyPrefs.maxReviews > 0 ? dailyPrefs.maxReviews : 50;
+    const toSpread = overdue.slice(keep);
+    if (toSpread.length === 0) return;
+    if (!confirm(`Keep your ${keep} most overdue cards for today and move the other ${toSpread.length} over the next 7 days?`)) return;
+    setIsStarting(true);
+    try {
+      await StorageService.spreadOverdue(toSpread.map((word) => word.id), 7);
+      setVocabularies(await StorageService.getVocabularies());
+      setMessage(null);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : 'Unable to reschedule your backlog.');
+    } finally {
+      setIsStarting(false);
+    }
   };
 
   const handleRecordRating = async (vocabId: string, rating: Rating) => {
@@ -132,7 +171,12 @@ export default function StudyPage() {
       return;
     }
     // Reload so statuses and due dates reflect the session that just finished.
-    setVocabularies(await StorageService.getVocabularies());
+    const [words, todayActivity] = await Promise.all([
+      StorageService.getVocabularies(),
+      StorageService.getTodayActivity().catch(() => activity),
+    ]);
+    setVocabularies(words);
+    setActivity(todayActivity);
     setPracticeAhead(true);
     setMessage(null);
   };
@@ -160,7 +204,10 @@ export default function StudyPage() {
             isLoading={isLoading || isStarting}
             message={message}
             initialMode={prefs.mode}
-            initialNewLimit={prefs.newLimit}
+            dailyPrefs={dailyPrefs}
+            activity={activity}
+            onChangePrefs={handleChangePrefs}
+            onSpreadBacklog={() => void handleSpreadBacklog()}
             initialPracticeAhead={practiceAhead}
             onStartStudy={handleStartStudy}
           />
