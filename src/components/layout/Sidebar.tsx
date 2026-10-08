@@ -73,7 +73,6 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
         <div>
           <h1 className="font-bold text-lg text-white leading-tight flex items-center gap-1.5">
             VocabMaster
-            <span className="text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-1.5 py-0.5 rounded-full font-medium">MVP</span>
           </h1>
           <p className="text-xs text-slate-400">Spaced Repetition & Recall</p>
         </div>
