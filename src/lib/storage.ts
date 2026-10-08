@@ -255,6 +255,22 @@ export const StorageService = {
     return mapVocabulary(data);
   },
 
+  /** Number of times each word was rated "forgot", used to flag leech cards. */
+  async getLapseCounts(vocabularyIds: string[]): Promise<Map<string, number>> {
+    const counts = new Map<string, number>();
+    if (vocabularyIds.length === 0) return counts;
+    const userId = await currentUserId();
+    const { data, error } = await client()
+      .from('review_logs')
+      .select('vocabulary_id')
+      .eq('user_id', userId)
+      .eq('rating', 'forgot')
+      .in('vocabulary_id', vocabularyIds);
+    if (error) throw error;
+    for (const row of data) counts.set(row.vocabulary_id, (counts.get(row.vocabulary_id) || 0) + 1);
+    return counts;
+  },
+
   async getActiveStudySession(): Promise<StudySession | null> {
     const userId = await currentUserId();
     const { data, error } = await client()

@@ -3,12 +3,16 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shell } from '@/components/layout/Shell';
-import { ScopeSelector } from '@/components/study/ScopeSelector';
+import { ScopeSelector, StudyOptions } from '@/components/study/ScopeSelector';
 import { FlashcardDeck } from '@/components/study/FlashcardDeck';
 import { StorageService } from '@/lib/storage';
 import { Folder, Vocabulary } from '@/types';
 import { Rating } from '@/lib/spacedRepetition';
-import { shuffle } from '@/lib/shuffle';
+import { buildStudyQueue } from '@/lib/studyQueue';
+import { StudyMode } from '@/lib/cards';
+
+const PREFS_KEY = 'vocabmaster.studyPrefs';
+const STUDY_MODES: StudyMode[] = ['mixed', 'classic', 'reverse', 'cloze', 'typing'];
 
 export default function StudyPage() {
   const router = useRouter();
@@ -19,6 +23,26 @@ export default function StudyPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isStarting, setIsStarting] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [lapseCounts, setLapseCounts] = useState<Map<string, number>>(new Map());
+  const [prefs, setPrefs] = useState<{ mode: StudyMode; newLimit: number }>({ mode: 'mixed', newLimit: 20 });
+  const [prefsReady, setPrefsReady] = useState(false);
+  const [practiceAhead, setPracticeAhead] = useState(false);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(PREFS_KEY) || 'null');
+      if (saved && STUDY_MODES.includes(saved.mode) && typeof saved.newLimit === 'number') {
+        setPrefs({ mode: saved.mode, newLimit: saved.newLimit });
+      }
+    } catch {
+      // Ignore unreadable preferences and keep the defaults.
+    }
+    setPrefsReady(true);
+  }, []);
+
+  const loadLapseCounts = (ids: string[]) =>
+    StorageService.getLapseCounts(ids).then(setLapseCounts).catch(() => setLapseCounts(new Map()));
 
   useEffect(() => {
     void Promise.all([
@@ -47,53 +71,49 @@ export default function StudyPage() {
           ? await StorageService.resumeStudySession(savedSession.id, remainingWords.map((word) => word.id))
           : savedSession;
 
+        const resumedQueue = hasRemovedWords ? remainingWords : sessionWords as Vocabulary[];
+        await loadLapseCounts(resumedQueue.map((word) => word.id));
         setStudySession(resumedSession);
-        setSessionQueue(hasRemovedWords ? remainingWords : sessionWords as Vocabulary[]);
+        setSessionQueue(resumedQueue);
       })
       .catch((error) => setLoadError(error instanceof Error ? error.message : 'Unable to load study data.'))
       .finally(() => setIsLoading(false));
   }, []);
 
   const saveAndStart = (queue: Vocabulary[]) => {
-    const nextQueue = shuffle(queue);
     setIsStarting(true);
-    void StorageService.startStudySession(nextQueue.map((word) => word.id))
-      .then((session) => {
+    void Promise.all([
+      StorageService.startStudySession(queue.map((word) => word.id)),
+      loadLapseCounts(queue.map((word) => word.id)),
+    ])
+      .then(([session]) => {
         setStudySession(session);
-        setSessionQueue(nextQueue);
+        setSessionQueue(queue);
       })
-      .catch((error) => alert(error instanceof Error ? error.message : 'Unable to save study session.'))
+      .catch((error) => setMessage(error instanceof Error ? error.message : 'Unable to save study session.'))
       .finally(() => setIsStarting(false));
   };
 
-  const handleStartStudy = (selectedFolderIds: string[] | null, includeNotDue: boolean) => {
-    let queue: Vocabulary[] = [];
+  const handleStartStudy = (options: StudyOptions) => {
+    setMessage(null);
+    window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: options.mode, newLimit: options.newLimit }));
+    setPrefs({ mode: options.mode, newLimit: options.newLimit });
 
-    if (!selectedFolderIds) {
-      queue = [...vocabularies];
-    } else {
-      const folderSet = new Set(selectedFolderIds);
-      queue = vocabularies.filter((v) => v.folderId && folderSet.has(v.folderId));
-    }
-
-    if (queue.length === 0) {
-      alert('No vocabulary words found in the selected scope.');
+    const folderSet = options.folderIds ? new Set(options.folderIds) : null;
+    let pool = vocabularies.filter((word) => !folderSet || (word.folderId && folderSet.has(word.folderId)));
+    if (pool.length === 0) {
+      setMessage('No vocabulary words found in the selected topics.');
       return;
     }
-
-    if (!includeNotDue) {
+    if (!options.includeNotDue) {
       const now = Date.now();
-      queue = queue.filter((v) => new Date(v.nextReviewAt).getTime() <= now);
-      if (queue.length === 0) {
-        alert('There are no cards due in this scope. Choose Practice ahead to review other words.');
+      pool = pool.filter((word) => word.status === 'new' || new Date(word.nextReviewAt).getTime() <= now);
+      if (pool.length === 0) {
+        setMessage('Nothing is due in this scope. Turn on practice ahead to review other words.');
         return;
       }
-      queue.sort((a, b) => new Date(a.nextReviewAt).getTime() - new Date(b.nextReviewAt).getTime());
-      saveAndStart(queue);
-      return;
     }
-
-    saveAndStart(queue);
+    saveAndStart(buildStudyQueue(pool, options.newLimit));
   };
 
   const handleRecordRating = async (vocabId: string, rating: Rating) => {
@@ -103,11 +123,18 @@ export default function StudyPage() {
     return updatedSession;
   };
 
-  const handleFinishSession = async () => {
+  const handleFinishSession = async (destination: 'dashboard' | 'more') => {
     if (studySession) await StorageService.deleteStudySession(studySession.id);
     setStudySession(null);
     setSessionQueue(null);
-    router.push('/');
+    if (destination === 'dashboard') {
+      router.push('/');
+      return;
+    }
+    // Reload so statuses and due dates reflect the session that just finished.
+    setVocabularies(await StorageService.getVocabularies());
+    setPracticeAhead(true);
+    setMessage(null);
   };
 
   const handlePauseSession = () => router.push('/');
@@ -127,15 +154,22 @@ export default function StudyPage() {
 
         {!sessionQueue || !studySession ? (
           <ScopeSelector
+            key={`${prefsReady}-${practiceAhead}`}
             folders={folders}
             vocabularies={vocabularies}
             isLoading={isLoading || isStarting}
+            message={message}
+            initialMode={prefs.mode}
+            initialNewLimit={prefs.newLimit}
+            initialPracticeAhead={practiceAhead}
             onStartStudy={handleStartStudy}
           />
         ) : (
           <FlashcardDeck
             vocabularies={sessionQueue}
             session={studySession}
+            mode={prefs.mode}
+            lapseCounts={lapseCounts}
             onRecordRating={handleRecordRating}
             onFinishSession={handleFinishSession}
             onPauseSession={handlePauseSession}
