@@ -18,6 +18,7 @@ import {
   minimumWords,
 } from '@/lib/quizBuilder';
 import { shuffle } from '@/lib/shuffle';
+import { persistSetting } from '@/lib/settings';
 
 const SESSION_KEY = 'vocabmaster.quizSession';
 const PREFS_KEY = 'vocabmaster.quizPrefs';
@@ -120,7 +121,7 @@ export default function QuizPage() {
 
   const handleStartQuiz = async (options: QuizOptions) => {
     setMessage(null);
-    window.localStorage.setItem(PREFS_KEY, JSON.stringify({ count: options.count, source: options.source, format: options.format }));
+    persistSetting('vocabmaster.quizPrefs', JSON.stringify({ count: options.count, source: options.source, format: options.format }));
     setPrefs({ count: options.count, source: options.source, format: options.format });
 
     const scopeSet = options.scopeFolderIds ? new Set(options.scopeFolderIds) : null;

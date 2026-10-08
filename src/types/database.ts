@@ -221,6 +221,24 @@ export type Database = {
         }
         Relationships: []
       }
+      user_settings: {
+        Row: {
+          data: Json
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          data?: Json
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          data?: Json
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       vocabularies: {
         Row: {
           created_at: string

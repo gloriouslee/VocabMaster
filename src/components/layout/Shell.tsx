@@ -6,6 +6,7 @@ import { Header } from './Header';
 import { StorageService } from '@/lib/storage';
 import { UserStats } from '@/types';
 import { clearAuthTokensFromUrl, supabase } from '@/lib/supabase';
+import { syncSettingsFromServer } from '@/lib/settings';
 import { useRouter } from 'next/navigation';
 
 interface ShellProps {
@@ -20,6 +21,7 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [stats, setStats] = useState<UserStats | undefined>(undefined);
   const [searchTerm, setSearchTerm] = useState('');
+  const [settingsReady, setSettingsReady] = useState(false);
 
   useEffect(() => {
     if (!supabase) {
@@ -36,6 +38,9 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
         return;
       }
       try {
+        // Preferences are synced first so screens read the account's latest values.
+        await syncSettingsFromServer().catch(() => undefined);
+        if (active) setSettingsReady(true);
         const nextStats = await StorageService.getUserStats();
         if (active) {
           setStats(nextStats);
@@ -76,7 +81,7 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
     if (error) setAuthError(error.message);
   };
 
-  if (!authReady || (requireAuth && !userEmail)) {
+  if (!authReady || (requireAuth && (!userEmail || !settingsReady))) {
     return (
       <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
         <div className="w-64 bg-slate-900 text-slate-100 min-h-screen" />

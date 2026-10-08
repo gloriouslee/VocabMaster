@@ -6,6 +6,7 @@ import confetti from 'canvas-confetti';
 import { Vocabulary } from '@/types';
 import { Rating, previewIntervals } from '@/lib/spacedRepetition';
 import { StudySession } from '@/lib/storage';
+import { persistSetting } from '@/lib/settings';
 import { CardMode, StudyMode, isCorrectAnswer, maskExample, pickCardMode } from '@/lib/cards';
 
 type RatingCounts = StudySession['ratingCounts'];
@@ -27,7 +28,7 @@ interface FlashcardDeckProps {
 const UNDO_WINDOW_MS = 5000;
 const RELEARN_GAP: Partial<Record<Rating, number>> = { forgot: 4, hard: 7 };
 const LEECH_LAPSES = 3;
-const ACCENT_KEY = 'vocabmaster.accent';
+const ACCENT_KEY = 'vocabmaster.accent' as const;
 
 const RATING_STYLES: Record<Rating, { label: string; className: string; subClass: string }> = {
   forgot: { label: 'Forgot', className: 'bg-rose-500 hover:bg-rose-600', subClass: 'text-rose-100' },
@@ -88,7 +89,7 @@ export function FlashcardDeck({
   const toggleAccent = () => {
     const next: Accent = accent === 'en-US' ? 'en-GB' : 'en-US';
     setAccent(next);
-    window.localStorage.setItem(ACCENT_KEY, next);
+    persistSetting(ACCENT_KEY, next);
   };
 
   const clearTimer = () => {

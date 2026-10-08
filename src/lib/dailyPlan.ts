@@ -1,4 +1,5 @@
 import { Vocabulary } from '@/types';
+import { persistSetting } from './settings';
 
 export interface DailyPrefs {
   /** Cards the learner aims to review each day. */
@@ -42,7 +43,7 @@ export function loadDailyPrefs(): DailyPrefs {
 }
 
 export function saveDailyPrefs(prefs: DailyPrefs): void {
-  window.localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  persistSetting('vocabmaster.dailyPrefs', JSON.stringify(prefs));
 }
 
 /** New words still allowed today, or null when there is no daily limit. */

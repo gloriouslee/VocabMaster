@@ -5,9 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Shell } from '@/components/layout/Shell';
 import { WeakWords } from '@/components/weak/WeakWords';
 import { StorageService } from '@/lib/storage';
+import { persistSetting } from '@/lib/settings';
 import { Folder, MistakeLog, Vocabulary } from '@/types';
-
-const QUIZ_PREFS_KEY = 'vocabmaster.quizPrefs';
 
 export default function WeakWordsPage() {
   const router = useRouter();
@@ -37,7 +36,7 @@ export default function WeakWordsPage() {
 
   // Open the quiz screen with the weak-words source already selected.
   const handlePracticeQuiz = (wordCount: number) => {
-    window.localStorage.setItem(QUIZ_PREFS_KEY, JSON.stringify({ count: Math.min(20, Math.max(5, wordCount)), source: 'weak', format: 'mixed' }));
+    persistSetting('vocabmaster.quizPrefs', JSON.stringify({ count: Math.min(20, Math.max(5, wordCount)), source: 'weak', format: 'mixed' }));
     router.push('/quiz');
   };
 

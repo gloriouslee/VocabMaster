@@ -11,6 +11,7 @@ import { Rating } from '@/lib/spacedRepetition';
 import { buildStudyQueue } from '@/lib/studyQueue';
 import { DEFAULT_DAILY_PREFS, DailyPrefs, TodayActivity, loadDailyPrefs, remainingNewToday, saveDailyPrefs } from '@/lib/dailyPlan';
 import { StudyMode } from '@/lib/cards';
+import { persistSetting } from '@/lib/settings';
 
 const PREFS_KEY = 'vocabmaster.studyPrefs';
 const STUDY_MODES: StudyMode[] = ['mixed', 'classic', 'reverse', 'cloze', 'typing'];
@@ -100,7 +101,7 @@ export default function StudyPage() {
 
   const handleStartStudy = (options: StudyOptions) => {
     setMessage(null);
-    window.localStorage.setItem(PREFS_KEY, JSON.stringify({ mode: options.mode }));
+    persistSetting('vocabmaster.studyPrefs', JSON.stringify({ mode: options.mode }));
     setPrefs({ mode: options.mode });
 
     const folderSet = options.folderIds ? new Set(options.folderIds) : null;
