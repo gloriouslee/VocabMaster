@@ -1,6 +1,7 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { BookOpen, Clock3, CheckCircle2, Plus, Upload } from 'lucide-react';
 import { Shell } from '@/components/layout/Shell';
@@ -9,7 +10,15 @@ import { VocabTable } from '@/components/library/VocabTable';
 import { VocabModal } from '@/components/library/VocabModal';
 import { StorageService } from '@/lib/storage';
 import { getFolderScopeIds } from '@/lib/folderScope';
+import { Toast, ToastMessage } from '@/components/common/Toast';
 import { Folder, Vocabulary } from '@/types';
+
+/** Reads ?q= from the URL (set by the header search) and reports it to the page. */
+function SearchParamBridge({ onChange }: { onChange: (query: string) => void }) {
+  const query = useSearchParams().get('q') || '';
+  useEffect(() => onChange(query), [query, onChange]);
+  return null;
+}
 
 export default function LibraryPage() {
   const [mounted, setMounted] = useState(false);
@@ -17,6 +26,8 @@ export default function LibraryPage() {
   const [vocabularies, setVocabularies] = useState<Vocabulary[]>([]);
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [externalSearch, setExternalSearch] = useState('');
+  const [toast, setToast] = useState<ToastMessage | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVocab, setEditingVocab] = useState<Vocabulary | null>(null);
@@ -72,7 +83,13 @@ export default function LibraryPage() {
   };
 
   const handleDeleteFolder = async (id: string) => {
-    if (confirm('Are you sure you want to delete this folder and its subfolders?')) {
+    const scope = getFolderScopeIds(folders, id);
+    const folder = folders.find((item) => item.id === id);
+    const subfolders = scope.size - 1;
+    const wordCount = vocabularies.filter((word) => word.folderId && scope.has(word.folderId)).length;
+    const message = `Delete "${folder?.name ?? 'this folder'}"${subfolders > 0 ? ` and its ${subfolders} ${subfolders === 1 ? 'subfolder' : 'subfolders'}` : ''}?` +
+      (wordCount > 0 ? `\n\n${wordCount} ${wordCount === 1 ? 'word' : 'words'} will stay in your library as uncategorized.` : '');
+    if (confirm(message)) {
       try {
         await StorageService.deleteFolder(id);
         const deletedFolderIds = new Set<string>();
@@ -103,13 +120,27 @@ export default function LibraryPage() {
   };
 
   const handleDeleteVocab = async (id: string) => {
-    if (confirm('Are you sure you want to delete this word from your library?')) {
-      try {
-        await StorageService.deleteVocabulary(id);
-        await refreshData();
-      } catch (error) {
-        alert(error instanceof Error ? error.message : 'Unable to delete vocabulary.');
-      }
+    const word = vocabularies.find((item) => item.id === id);
+    if (!word) return;
+    try {
+      await StorageService.deleteVocabulary(id);
+      await refreshData();
+      // No confirmation dialog: deleting is reversible for a few seconds, keeping learning progress.
+      setToast({
+        id: Date.now(),
+        message: `Deleted "${word.word}"`,
+        actionLabel: 'Undo',
+        onAction: async () => {
+          try {
+            await StorageService.addVocabulary({ ...word });
+            await refreshData();
+          } catch (error) {
+            alert(error instanceof Error ? error.message : 'Unable to restore the word.');
+          }
+        },
+      });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : 'Unable to delete vocabulary.');
     }
   };
 
@@ -203,6 +234,7 @@ export default function LibraryPage() {
               folders={folders}
               selectedFolderId={selectedFolderId}
               onClearFolder={() => setSelectedFolderId(null)}
+              externalSearch={externalSearch}
               onAddWord={() => {
                 setEditingVocab(null);
                 setIsModalOpen(true);
@@ -215,6 +247,11 @@ export default function LibraryPage() {
             />
           </div>
         </div>
+
+        <Suspense fallback={null}>
+          <SearchParamBridge onChange={setExternalSearch} />
+        </Suspense>
+        <Toast toast={toast} onDismiss={() => setToast(null)} />
 
         {/* Add/Edit Modal */}
         <VocabModal

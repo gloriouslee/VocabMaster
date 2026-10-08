@@ -11,10 +11,11 @@ import {
   HelpCircle,
   AlertCircle,
   GraduationCap,
-  Sparkles
+  Sparkles,
+  Settings,
 } from 'lucide-react';
 
-export function Sidebar() {
+export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
 
   const navItems = [
@@ -54,6 +55,12 @@ export function Sidebar() {
       icon: AlertCircle,
       active: pathname === '/weak-words',
     },
+    {
+      label: 'Settings',
+      href: '/settings',
+      icon: Settings,
+      active: pathname === '/settings',
+    },
   ];
 
   return (
@@ -85,6 +92,7 @@ export function Sidebar() {
                 <Link
                   key={item.href}
                   href={item.href}
+                  onClick={onNavigate}
                   className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                     item.active
                       ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 font-semibold'

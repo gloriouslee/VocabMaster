@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import {
   Search,
@@ -24,6 +24,8 @@ interface VocabTableProps {
   folders: Folder[];
   selectedFolderId?: string | null;
   onClearFolder: () => void;
+  /** Search text pushed in from outside, e.g. the header search. */
+  externalSearch?: string;
   onAddWord: () => void;
   onEditWord: (vocab: Vocabulary) => void;
   onDeleteWord: (id: string) => void;
@@ -46,11 +48,13 @@ export function VocabTable({
   folders,
   selectedFolderId,
   onClearFolder,
+  externalSearch = '',
   onAddWord,
   onEditWord,
   onDeleteWord,
 }: VocabTableProps) {
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(externalSearch);
+  useEffect(() => setSearchQuery(externalSearch), [externalSearch]);
   const [statusFilter, setStatusFilter] = useState<VocabStatus | 'all'>('all');
   const folderMap = new Map(folders.map((folder) => [folder.id, folder.name]));
   const selectedFolderName = selectedFolderId ? folderMap.get(selectedFolderId) : null;

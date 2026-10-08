@@ -18,6 +18,9 @@ import { StatCard } from '@/components/dashboard/StatCard';
 import { DailyProgress } from '@/components/dashboard/DailyProgress';
 import { StreakBadge } from '@/components/dashboard/StreakBadge';
 import { DueForecast } from '@/components/dashboard/DueForecast';
+import { OnboardingCard } from '@/components/dashboard/OnboardingCard';
+import { ExamBanner } from '@/components/dashboard/ExamBanner';
+import { ExamGoal, loadExamGoal, planForExam } from '@/lib/examGoal';
 import { WordOfTheDay } from '@/components/dashboard/WordOfTheDay';
 import { StorageService } from '@/lib/storage';
 import { Vocabulary, UserStats } from '@/types';
@@ -27,6 +30,7 @@ export default function DashboardPage() {
   const [mounted, setMounted] = useState(false);
   const [vocabularies, setVocabularies] = useState<Vocabulary[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [examGoal, setExamGoal] = useState<ExamGoal | null>(null);
   const [dailyPrefs, setDailyPrefs] = useState<DailyPrefs>(DEFAULT_DAILY_PREFS);
   const [activity, setActivity] = useState<TodayActivity>({ reviewsToday: 0, newToday: 0 });
   const [stats, setStats] = useState<UserStats>({
@@ -39,6 +43,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     setDailyPrefs(loadDailyPrefs());
+    setExamGoal(loadExamGoal());
     void Promise.all([
       StorageService.getVocabularies(),
       StorageService.getUserStats(),
@@ -61,6 +66,21 @@ export default function DashboardPage() {
   const newAllowance = remainingNewToday(dailyPrefs, activity);
   const newAvailable = newAllowance === null ? newWords : Math.min(newAllowance, newWords);
   const forecast = dueForecast(vocabularies);
+
+  const refreshAfterStarter = async () => {
+    const [words, todayActivity] = await Promise.all([
+      StorageService.getVocabularies(),
+      StorageService.getTodayActivity().catch(() => ({ reviewsToday: 0, newToday: 0 })),
+    ]);
+    setVocabularies(words);
+    setActivity(todayActivity);
+  };
+
+  const handleAddStarterPack = async () => {
+    const { added } = await StorageService.importStarterPack();
+    await refreshAfterStarter();
+    return added;
+  };
 
   const handleChangeGoal = (dailyGoal: number) => {
     const next = { ...dailyPrefs, dailyGoal };
@@ -115,6 +135,12 @@ export default function DashboardPage() {
             </Link>
           </div>
         </div>
+
+        {totalWords === 0 && <OnboardingCard onAddStarterPack={handleAddStarterPack} />}
+
+        {examGoal && totalWords > 0 && (
+          <ExamBanner plan={planForExam(examGoal.date, newWords)} newWordsLeft={newWords} currentNewPerDay={dailyPrefs.newPerDay} />
+        )}
 
         {/* Epic 4.1: Overview Stats Grid */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">

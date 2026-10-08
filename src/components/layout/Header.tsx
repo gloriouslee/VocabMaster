@@ -2,42 +2,38 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
-import { Search, Flame, User, LogOut } from 'lucide-react';
+import { Flame, User, LogOut, Menu } from 'lucide-react';
+import { GlobalSearch } from './GlobalSearch';
 import { UserStats } from '@/types';
 
 interface HeaderProps {
   stats?: UserStats;
   userEmail: string | null;
   onSignOut: () => void;
-  onSearchChange?: (term: string) => void;
-  searchTerm?: string;
+  onMenuClick?: () => void;
 }
 
-export function Header({ stats, userEmail, onSignOut, onSearchChange, searchTerm = '' }: HeaderProps) {
+export function Header({ stats, userEmail, onSignOut, onMenuClick }: HeaderProps) {
   const streakDays = stats?.currentStreak || 0;
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-6 flex items-center justify-between sticky top-0 z-30 shadow-sm">
-      {/* Search Input */}
-      <div className="flex items-center w-full max-w-md">
-        <div className="relative w-full">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => onSearchChange && onSearchChange(e.target.value)}
-            placeholder="Search IELTS words, meanings, or topics..."
-            className="w-full pl-9 pr-4 py-2 text-sm bg-slate-100/70 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-slate-800 placeholder-slate-400"
-          />
-        </div>
+    <header className="h-16 bg-white border-b border-slate-200 px-3 md:px-6 gap-3 flex items-center justify-between sticky top-0 z-30 shadow-sm">
+      {/* Menu (small screens) and search */}
+      <div className="flex w-full max-w-md items-center gap-2">
+        {onMenuClick && (
+          <button type="button" onClick={onMenuClick} aria-label="Open menu" className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 md:hidden">
+            <Menu className="h-5 w-5" />
+          </button>
+        )}
+        <GlobalSearch />
       </div>
 
       {/* Right Action Bar */}
-      <div className="flex items-center space-x-4">
+      <div className="flex shrink-0 items-center space-x-2 md:space-x-4">
         {/* Streak Counter */}
         <div className="flex items-center space-x-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold shadow-xs">
           <Flame className="w-4 h-4 text-amber-500 fill-amber-500 animate-pulse" />
-          <span>{streakDays} Day Streak</span>
+          <span>{streakDays}<span className="hidden sm:inline"> Day Streak</span></span>
         </div>
 
         {/* User Auth */}
@@ -46,7 +42,7 @@ export function Header({ stats, userEmail, onSignOut, onSearchChange, searchTerm
             <div className="w-7 h-7 rounded-full bg-blue-600 text-white font-bold text-xs flex items-center justify-center">
               {userEmail.charAt(0).toUpperCase()}
             </div>
-            <span className="text-xs font-medium text-slate-700 max-w-[120px] truncate">
+            <span className="hidden max-w-[120px] truncate text-xs font-medium text-slate-700 lg:inline">
               {userEmail}
             </span>
             <button

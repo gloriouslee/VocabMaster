@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
+import { MobileNav } from './MobileNav';
 import { StorageService } from '@/lib/storage';
 import { UserStats } from '@/types';
 import { clearAuthTokensFromUrl, supabase } from '@/lib/supabase';
@@ -20,7 +21,7 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
   const [authError, setAuthError] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [stats, setStats] = useState<UserStats | undefined>(undefined);
-  const [searchTerm, setSearchTerm] = useState('');
+  const [menuOpen, setMenuOpen] = useState(false);
   const [settingsReady, setSettingsReady] = useState(false);
 
   useEffect(() => {
@@ -99,11 +100,22 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
 
   return (
     <div className="flex min-h-screen bg-slate-50 font-sans text-slate-900 antialiased">
-      <Sidebar />
-      <div className="flex-1 flex flex-col min-w-0">
-        <Header stats={stats} userEmail={userEmail} onSignOut={handleSignOut} searchTerm={searchTerm} onSearchChange={setSearchTerm} />
-        <main className="flex-1 p-6 md:p-8 max-w-[1600px] w-full mx-auto">{children}</main>
+      <div className="hidden md:block">
+        <Sidebar />
       </div>
+      {menuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <button type="button" aria-label="Close menu" onClick={() => setMenuOpen(false)} className="absolute inset-0 bg-slate-900/50" />
+          <div className="absolute left-0 top-0 h-full overflow-y-auto">
+            <Sidebar onNavigate={() => setMenuOpen(false)} />
+          </div>
+        </div>
+      )}
+      <div className="flex-1 flex flex-col min-w-0">
+        <Header stats={stats} userEmail={userEmail} onSignOut={handleSignOut} onMenuClick={() => setMenuOpen(true)} />
+        <main className="flex-1 p-4 pb-24 md:p-8 md:pb-8 max-w-[1600px] w-full mx-auto">{children}</main>
+      </div>
+      <MobileNav onMore={() => setMenuOpen(true)} />
     </div>
   );
 }
