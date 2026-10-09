@@ -13,6 +13,7 @@ import {
   AlertCircle,
   GraduationCap,
   Settings,
+  Compass,
 } from 'lucide-react';
 
 export function Sidebar({ onNavigate, today = null }: { onNavigate?: () => void; today?: TodaySummary | null }) {
@@ -30,6 +31,12 @@ export function Sidebar({ onNavigate, today = null }: { onNavigate?: () => void;
       href: '/library',
       icon: FolderTree,
       active: pathname === '/library',
+    },
+    {
+      label: 'Explore',
+      href: '/explore',
+      icon: Compass,
+      active: pathname.startsWith('/explore'),
     },
     {
       label: 'Import Vocab',

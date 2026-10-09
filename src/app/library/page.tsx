@@ -11,12 +11,18 @@ import { VocabModal } from '@/components/library/VocabModal';
 import { StorageService } from '@/lib/storage';
 import { getFolderScopeIds } from '@/lib/folderScope';
 import { Toast, ToastMessage } from '@/components/common/Toast';
+import { ShareDialog } from '@/components/library/ShareDialog';
+import { ExploreService, MyCollection, MySubscription } from '@/lib/explore';
+import { normalizeWord } from '@/lib/normalizeWord';
 import { Folder, Vocabulary } from '@/types';
 
 /** Reads ?q= from the URL (set by the header search) and reports it to the page. */
-function SearchParamBridge({ onChange }: { onChange: (query: string) => void }) {
-  const query = useSearchParams().get('q') || '';
+function SearchParamBridge({ onChange, onFolder }: { onChange: (query: string) => void; onFolder: (folderId: string) => void }) {
+  const params = useSearchParams();
+  const query = params.get('q') || '';
+  const folder = params.get('folder') || '';
   useEffect(() => onChange(query), [query, onChange]);
+  useEffect(() => { if (folder) onFolder(folder); }, [folder, onFolder]);
   return null;
 }
 
@@ -28,6 +34,9 @@ export default function LibraryPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [externalSearch, setExternalSearch] = useState('');
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [myCollections, setMyCollections] = useState<MyCollection[]>([]);
+  const [subscriptions, setSubscriptions] = useState<MySubscription[]>([]);
+  const [sharingFolder, setSharingFolder] = useState<Folder | null>(null);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVocab, setEditingVocab] = useState<Vocabulary | null>(null);
@@ -50,12 +59,17 @@ export default function LibraryPage() {
   const masteredCount = vocabularies.filter((word) => word.status === 'mastered').length;
 
   const refreshData = async () => {
-    const [nextFolders, nextVocabularies] = await Promise.all([
+    // Sharing is optional: if it is unavailable the library keeps working without it.
+    const [nextFolders, nextVocabularies, nextCollections, nextSubscriptions] = await Promise.all([
       StorageService.getFolders(),
       StorageService.getVocabularies(),
+      ExploreService.myCollections().catch(() => [] as MyCollection[]),
+      ExploreService.mySubscriptions().catch(() => [] as MySubscription[]),
     ]);
     setFolders(nextFolders);
     setVocabularies(nextVocabularies);
+    setMyCollections(nextCollections);
+    setSubscriptions(nextSubscriptions);
   };
 
   useEffect(() => {
@@ -63,6 +77,37 @@ export default function LibraryPage() {
       .catch((error) => setLoadError(error instanceof Error ? error.message : 'Unable to load your library.'))
       .finally(() => setMounted(true));
   }, []);
+
+  const sharedFolders = useMemo(() => {
+    const map = new Map<string, MyCollection['visibility']>();
+    for (const collection of myCollections) {
+      if (collection.folderId && collection.visibility !== 'private') map.set(collection.folderId, collection.visibility);
+    }
+    return map;
+  }, [myCollections]);
+
+  const subscribedFolders = useMemo(() => {
+    const map = new Map<string, { collectionId: string; hasUpdate: boolean }>();
+    for (const subscription of subscriptions) {
+      if (subscription.localFolderId) map.set(subscription.localFolderId, { collectionId: subscription.collectionId, hasUpdate: subscription.hasUpdate });
+    }
+    return map;
+  }, [subscriptions]);
+
+  const shareWordCount = (folderId: string) => {
+    const scope = getFolderScopeIds(folders, folderId);
+    return new Set(vocabularies.filter((word) => word.folderId && scope.has(word.folderId)).map((word) => normalizeWord(word.word))).size;
+  };
+
+  const handleSyncFolder = async (collectionId: string) => {
+    try {
+      const { added } = await ExploreService.sync(collectionId);
+      await refreshData();
+      setToast({ id: Date.now(), message: added > 0 ? `Added ${added} new ${added === 1 ? 'word' : 'words'}` : 'Already up to date' });
+    } catch (error) {
+      setToast({ id: Date.now(), message: error instanceof Error ? error.message : 'Unable to sync this collection.' });
+    }
+  };
 
   const handleCreateFolder = async (name: string, parentId: string | null) => {
     try {
@@ -211,6 +256,10 @@ export default function LibraryPage() {
                 onCreateFolder={handleCreateFolder}
                 onRenameFolder={handleRenameFolder}
                 onDeleteFolder={handleDeleteFolder}
+                sharedFolders={sharedFolders}
+                subscribedFolders={subscribedFolders}
+                onShareFolder={setSharingFolder}
+                onSyncFolder={(collectionId) => void handleSyncFolder(collectionId)}
               />
             </div>
           </details>
@@ -225,6 +274,10 @@ export default function LibraryPage() {
               onCreateFolder={handleCreateFolder}
               onRenameFolder={handleRenameFolder}
               onDeleteFolder={handleDeleteFolder}
+              sharedFolders={sharedFolders}
+              subscribedFolders={subscribedFolders}
+              onShareFolder={setSharingFolder}
+              onSyncFolder={(collectionId) => void handleSyncFolder(collectionId)}
             />
           </aside>
 
@@ -249,9 +302,18 @@ export default function LibraryPage() {
         </div>
 
         <Suspense fallback={null}>
-          <SearchParamBridge onChange={setExternalSearch} />
+          <SearchParamBridge onChange={setExternalSearch} onFolder={setSelectedFolderId} />
         </Suspense>
         <Toast toast={toast} onDismiss={() => setToast(null)} />
+        {sharingFolder && (
+          <ShareDialog
+            folder={sharingFolder}
+            wordCount={shareWordCount(sharingFolder.id)}
+            existing={myCollections.find((collection) => collection.folderId === sharingFolder.id) ?? null}
+            onClose={() => setSharingFolder(null)}
+            onChanged={() => void refreshData().catch(() => undefined)}
+          />
+        )}
 
         {/* Add/Edit Modal */}
         <VocabModal

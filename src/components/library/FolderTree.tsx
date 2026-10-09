@@ -9,9 +9,13 @@ import {
   ChevronRight,
   ChevronDown,
   Plus,
-  BookOpen
+  BookOpen,
+  Share2,
+  Users,
+  RefreshCw,
 } from 'lucide-react';
 import { Folder } from '@/types';
+import type { CollectionVisibility } from '@/lib/explore';
 
 interface FolderTreeProps {
   folders: Folder[];
@@ -22,6 +26,12 @@ interface FolderTreeProps {
   onCreateFolder: (name: string, parentId: string | null) => void;
   onRenameFolder: (id: string, newName: string) => void;
   onDeleteFolder: (id: string) => void;
+  /** Folders the learner shares, with how (private ones are left out). */
+  sharedFolders?: Map<string, CollectionVisibility>;
+  /** Folders that follow someone else's collection. */
+  subscribedFolders?: Map<string, { collectionId: string; hasUpdate: boolean }>;
+  onShareFolder?: (folder: Folder) => void;
+  onSyncFolder?: (collectionId: string) => void;
 }
 
 export function FolderTree({
@@ -33,6 +43,10 @@ export function FolderTree({
   onCreateFolder,
   onRenameFolder,
   onDeleteFolder,
+  sharedFolders,
+  subscribedFolders,
+  onShareFolder,
+  onSyncFolder,
 }: FolderTreeProps) {
   const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(
     new Set(folders.map((f) => f.id))
@@ -138,6 +152,16 @@ export function FolderTree({
               >
                 <FolderIcon className={`h-4 w-4 shrink-0 ${isSelected ? 'text-white' : 'text-blue-500'}`} />
                 <span className="truncate text-xs">{folder.name}</span>
+                {sharedFolders?.has(folder.id) && (
+                  <span title={sharedFolders.get(folder.id) === 'public' ? 'Shared publicly' : 'Shared by link'} className="shrink-0">
+                    <Share2 className={`h-3 w-3 ${isSelected ? 'text-white/80' : 'text-blue-500'}`} aria-label="Shared" />
+                  </span>
+                )}
+                {subscribedFolders?.has(folder.id) && (
+                  <span title="You are subscribed to this collection" className="shrink-0">
+                    <Users className={`h-3 w-3 ${isSelected ? 'text-white/80' : 'text-emerald-600'}`} aria-label="Subscribed" />
+                  </span>
+                )}
                 <span className={`ml-auto rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
                   {wordCounts.get(folder.id) || 0}
                 </span>
@@ -152,6 +176,28 @@ export function FolderTree({
             }`}
             onClick={(e) => e.stopPropagation()}
           >
+            {subscribedFolders?.get(folder.id)?.hasUpdate && onSyncFolder && (
+              <button
+                type="button"
+                onClick={() => onSyncFolder(subscribedFolders.get(folder.id)!.collectionId)}
+                aria-label={`Sync new words into ${folder.name}`}
+                title="The author added new words. Sync them"
+                className="rounded p-1 text-amber-500 transition-colors hover:bg-amber-500/20 sm:opacity-100"
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+              </button>
+            )}
+            {onShareFolder && !subscribedFolders?.has(folder.id) && (
+              <button
+                type="button"
+                onClick={() => onShareFolder(folder)}
+                aria-label={`Share ${folder.name}`}
+                title="Share as a collection"
+                className={`rounded p-1 transition-colors hover:bg-white/20 ${isSelected ? 'text-white' : 'text-slate-400 hover:text-blue-600'}`}
+              >
+                <Share2 className="h-3.5 w-3.5" />
+              </button>
+            )}
             {level === 0 && (
               <button
                 type="button"
