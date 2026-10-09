@@ -29,6 +29,7 @@ describe('Explore migration (real Postgres)', () => {
       '20261008144143_index_foreign_keys.sql',
       '20261008144349_restrict_table_grants.sql',
       '20261009030000_explore_collections.sql',
+      '20261009040000_fix_publish_collection_tags.sql',
     ]) {
       try {
         await db.exec(readFileSync(dir + file, 'utf8'));
