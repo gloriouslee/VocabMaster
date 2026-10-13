@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { MobileNav } from './MobileNav';
+import { SpeechNotice } from '@/components/common/SpeechNotice';
 import { TodaySummary } from './TodayCard';
 import { loadDailyPrefs } from '@/lib/dailyPlan';
 import { daysUntil, loadExamGoal } from '@/lib/examGoal';
@@ -139,6 +140,7 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
         <main className="flex-1 p-4 pb-24 md:p-8 md:pb-8 max-w-[1600px] w-full mx-auto">{children}</main>
       </div>
       <MobileNav onMore={() => setMenuOpen(true)} />
+      <SpeechNotice />
     </div>
   );
 }

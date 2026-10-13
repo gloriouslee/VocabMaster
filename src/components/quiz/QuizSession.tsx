@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Volume2, CheckCircle2, XCircle, ArrowRight, LogOut, AlertTriangle } from 'lucide-react';
 import { QuizAnswer, QuizQuestion, TYPE_LABELS, isAnswerCorrect } from '@/lib/quizBuilder';
+import { speak as speakAloud } from '@/lib/speech';
 
 export type { QuizQuestion, QuizAnswer };
 
@@ -15,7 +16,6 @@ interface QuizSessionProps {
   onExit: () => void;
 }
 
-const ACCENT_KEY = 'vocabmaster.accent';
 
 export function QuizSession({ questions, initialAnswers = [], onProgress, onComplete, onExit }: QuizSessionProps) {
   const [answers, setAnswers] = useState<QuizAnswer[]>(initialAnswers);
@@ -29,16 +29,7 @@ export function QuizSession({ questions, initialAnswers = [], onProgress, onComp
   const isAnswered = selected !== null;
   const isCorrect = isAnswered && question ? isAnswerCorrect(question, selected) : false;
 
-  const speak = useCallback((text: string) => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    const accent = window.localStorage.getItem(ACCENT_KEY) === 'en-GB' ? 'en-GB' : 'en-US';
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = accent;
-    const voice = window.speechSynthesis.getVoices().find((candidate) => candidate.lang.replace('_', '-') === accent);
-    if (voice) utterance.voice = voice;
-    window.speechSynthesis.speak(utterance);
-  }, []);
+  const speak = useCallback((text: string) => void speakAloud(text), []);
 
   // Read listening questions aloud as soon as they appear.
   useEffect(() => {
@@ -243,7 +234,14 @@ export function QuizSession({ questions, initialAnswers = [], onProgress, onComp
                 </button>
                 <span className="text-slate-600">· {question.vocab.meaning}</span>
               </div>
-              {question.vocab.example && <p className="text-xs italic leading-relaxed text-slate-600">“{question.vocab.example}”</p>}
+              {question.vocab.example && (
+                <p className="flex items-start gap-1.5 text-xs italic leading-relaxed text-slate-600">
+                  <span>“{question.vocab.example}”</span>
+                  <button type="button" onClick={() => speak(question.vocab.example || '')} aria-label="Read the example sentence aloud" className="shrink-0 rounded-full p-1 text-slate-500 not-italic hover:bg-white hover:text-indigo-600">
+                    <Volume2 className="h-3.5 w-3.5" />
+                  </button>
+                </p>
+              )}
               {!isCorrect && question.vocab.status !== 'new' && (
                 <p className="text-xs text-slate-500">This word will come back in your next review session.</p>
               )}

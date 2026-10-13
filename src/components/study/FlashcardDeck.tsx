@@ -7,6 +7,7 @@ import { Vocabulary } from '@/types';
 import { Rating, previewIntervals } from '@/lib/spacedRepetition';
 import { StudySession } from '@/lib/storage';
 import { persistSetting } from '@/lib/settings';
+import { speak } from '@/lib/speech';
 import { CardMode, StudyMode, isCorrectAnswer, maskExample, pickCardMode } from '@/lib/cards';
 
 type RatingCounts = StudySession['ratingCounts'];
@@ -76,15 +77,7 @@ export function FlashcardDeck({
     if (saved === 'en-US' || saved === 'en-GB') setAccent(saved);
   }, []);
 
-  const handleSpeak = useCallback((text: string) => {
-    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = accent;
-    const voice = window.speechSynthesis.getVoices().find((candidate) => candidate.lang.replace('_', '-') === accent);
-    if (voice) utterance.voice = voice;
-    window.speechSynthesis.speak(utterance);
-  }, [accent]);
+  const handleSpeak = useCallback((text: string) => void speak(text), []);
 
   const toggleAccent = () => {
     const next: Accent = accent === 'en-US' ? 'en-GB' : 'en-US';
@@ -417,7 +410,12 @@ export function FlashcardDeck({
               )}
               {vocab.example && (
                 <div className="rounded-2xl border border-slate-200/60 bg-slate-50 p-4 text-left">
-                  <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Example sentence</p>
+                  <p className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                    Example sentence
+                    <button type="button" onClick={() => handleSpeak(vocab.example || '')} aria-label="Read the example sentence aloud" className="rounded-full p-1 normal-case text-slate-500 hover:bg-slate-200 hover:text-blue-600">
+                      <Volume2 className="h-4 w-4" />
+                    </button>
+                  </p>
                   <p className="mt-1 text-base italic leading-relaxed text-slate-800">“{vocab.example}”</p>
                 </div>
               )}

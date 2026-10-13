@@ -16,6 +16,16 @@ import {
 import { ExamGoal, loadExamGoal, planForExam, saveExamGoal } from '@/lib/examGoal';
 import { createBackup, parseBackup } from '@/lib/backup';
 import { STARTER_PACK_SIZE } from '@/lib/starterPack';
+import {
+  CHINESE_VARIANTS,
+  CHINESE_VARIANT_KEY,
+  ChineseVariant,
+  loadVoices,
+  missingVoiceMessage,
+  readSpeechPreferences,
+  speak,
+  summariseVoices,
+} from '@/lib/speech';
 import { supabase } from '@/lib/supabase';
 import { MAX_NAME_LENGTH, Profile, profileFromUser, removeAvatar, updateDisplayName, uploadAvatar } from '@/lib/profile';
 import { Avatar } from '@/components/layout/Avatar';
@@ -45,6 +55,8 @@ export default function SettingsPage() {
   const [prefs, setPrefs] = useState<DailyPrefs>(DEFAULT_DAILY_PREFS);
   const [accent, setAccent] = useState<'en-US' | 'en-GB'>('en-US');
   const [exam, setExam] = useState<ExamGoal | null>(null);
+  const [chinese, setChinese] = useState<ChineseVariant>('zh-CN');
+  const [voices, setVoices] = useState<ReturnType<typeof summariseVoices> | null>(null);
   const [newWords, setNewWords] = useState(0);
   const [notice, setNotice] = useState<{ section: string; value: Notice }>({ section: '', value: null });
   const [isBusy, setIsBusy] = useState(false);
@@ -64,6 +76,8 @@ export default function SettingsPage() {
 
   useEffect(() => {
     void loadProfile();
+    setChinese(readSpeechPreferences().chinese);
+    void loadVoices().then((list) => setVoices(summariseVoices(list)));
     setPrefs(loadDailyPrefs());
     setExam(loadExamGoal());
     setAccent(window.localStorage.getItem('vocabmaster.accent') === 'en-GB' ? 'en-GB' : 'en-US');
@@ -97,6 +111,11 @@ export default function SettingsPage() {
   const updateAccent = (next: 'en-US' | 'en-GB') => {
     setAccent(next);
     persistSetting('vocabmaster.accent', next);
+  };
+
+  const updateChinese = (next: ChineseVariant) => {
+    setChinese(next);
+    persistSetting(CHINESE_VARIANT_KEY, next);
   };
 
   const updateExam = (date: string) => {
@@ -246,6 +265,23 @@ export default function SettingsPage() {
               <option value="en-GB">British (UK)</option>
             </select>
           </label>
+          <label className="block text-xs font-semibold text-slate-600 sm:max-w-xs">
+            Chinese pronunciation
+            <select value={chinese} onChange={(event) => updateChinese(event.target.value as ChineseVariant)} className={selectClass}>
+              {CHINESE_VARIANTS.map((variant) => <option key={variant.value} value={variant.value}>{variant.label}</option>)}
+            </select>
+          </label>
+          <div className="space-y-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
+            <p>
+              Voices on this device:{' '}
+              {voices === null ? 'checking…' : <>English <strong>{voices.english}</strong> · Chinese <strong>{voices.chinese}</strong> · Japanese <strong>{voices.japanese}</strong> · Korean <strong>{voices.korean}</strong></>}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button type="button" onClick={() => void speak('Hello, welcome to VocabMaster.')} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">Test English voice</button>
+              <button type="button" onClick={() => void speak('你好，欢迎使用单词大师。')} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">Test Chinese voice</button>
+            </div>
+            {voices !== null && voices.chinese === 0 && <p className="text-xs text-amber-800">{missingVoiceMessage('zh-CN')}</p>}
+          </div>
         </Section>
 
         <Section title="Exam goal" description="Set your exam date and the app tells you how many new words to learn each day.">

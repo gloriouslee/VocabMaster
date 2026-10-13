@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Volume2, Sparkles, RefreshCw, ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 import { Vocabulary } from '@/types';
+import { speak } from '@/lib/speech';
 
 interface WordOfTheDayProps {
   vocabularies: Vocabulary[];
@@ -29,13 +30,7 @@ export function WordOfTheDay({ vocabularies }: WordOfTheDayProps) {
     }
   };
 
-  const handleSpeak = (text: string) => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
-      window.speechSynthesis.speak(utterance);
-    }
-  };
+  const handleSpeak = (text: string) => void speak(text);
 
   if (!currentWord) {
     return (

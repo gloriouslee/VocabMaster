@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { getFolderScopeIds } from '@/lib/folderScope';
 import { Vocabulary, Folder, VocabStatus } from '@/types';
+import { speak } from '@/lib/speech';
 
 interface VocabTableProps {
   vocabularies: Vocabulary[];
@@ -88,13 +89,7 @@ export function VocabTable({
     onClearFolder();
   };
 
-  const handleSpeak = (text: string) => {
-    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.lang = 'en-US';
-      window.speechSynthesis.speak(utterance);
-    }
-  };
+  const handleSpeak = (text: string) => void speak(text);
 
   const handleExport = () => {
     const headers = ['Word', 'Vietnamese Meaning', 'Word Type', 'Phonetic', 'Level', 'Example Sentence', 'Folder', 'Status', 'Next Review'];

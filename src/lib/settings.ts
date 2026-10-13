@@ -9,6 +9,7 @@ export const SETTING_KEYS = [
   'vocabmaster.studyPrefs',
   'vocabmaster.quizPrefs',
   'vocabmaster.accent',
+  'vocabmaster.chineseVariant',
   'vocabmaster.examGoal',
 ] as const;
 
