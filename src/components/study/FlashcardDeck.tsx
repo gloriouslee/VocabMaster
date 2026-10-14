@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Volume2, Eye, Award, Pause, Undo2, AlertTriangle, Check, X, RotateCcw, PenLine } from 'lucide-react';
+import { Volume2, Eye, Award, Pause, Undo2, AlertTriangle, Check, X } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Vocabulary } from '@/types';
 import { Rating, previewIntervals } from '@/lib/spacedRepetition';
@@ -9,6 +9,7 @@ import { StudySession } from '@/lib/storage';
 import { persistSetting } from '@/lib/settings';
 import { speak } from '@/lib/speech';
 import { CardMode, StudyMode, isCorrectAnswer, maskExample, pickCardMode } from '@/lib/cards';
+import { ChineseWritingPractice } from './ChineseWritingPractice';
 
 type RatingCounts = StudySession['ratingCounts'];
 type DeckItem = { vocab: Vocabulary; relearn: boolean };
@@ -62,9 +63,6 @@ export function FlashcardDeck({
   const [error, setError] = useState<string | null>(null);
   const [accent, setAccent] = useState<Accent>('en-US');
   const [writingEnabled, setWritingEnabled] = useState(false);
-  const [showWritingAnswer, setShowWritingAnswer] = useState(false);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const drawingRef = useRef(false);
 
   const pendingRef = useRef<Pending | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -81,34 +79,6 @@ export function FlashcardDeck({
     if (saved === 'en-US' || saved === 'en-GB') setAccent(saved);
     setWritingEnabled(window.localStorage.getItem('vocabmaster.chineseWritingEnabled') === 'true');
   }, []);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    const bounds = canvas.getBoundingClientRect();
-    const scale = window.devicePixelRatio || 1;
-    canvas.width = bounds.width * scale;
-    canvas.height = bounds.height * scale;
-    context.scale(scale, scale);
-    context.fillStyle = '#fff';
-    context.fillRect(0, 0, bounds.width, bounds.height);
-    context.strokeStyle = '#cbd5e1';
-    context.lineWidth = 1;
-    context.setLineDash([5, 5]);
-    context.beginPath();
-    context.moveTo(bounds.width / 2, 0);
-    context.lineTo(bounds.width / 2, bounds.height);
-    context.moveTo(0, bounds.height / 2);
-    context.lineTo(bounds.width, bounds.height / 2);
-    context.stroke();
-    context.setLineDash([]);
-    context.strokeStyle = '#0f172a';
-    context.lineWidth = 5;
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
-  }, [index, showWritingAnswer, writingEnabled]);
 
   const handleSpeak = useCallback((text: string) => void speak(text), []);
 
@@ -155,57 +125,6 @@ export function FlashcardDeck({
     setShowAnswer(false);
     setTyped('');
     setTypedResult(null);
-    setShowWritingAnswer(false);
-  };
-
-  const pointOnCanvas = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const bounds = event.currentTarget.getBoundingClientRect();
-    return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
-  };
-
-  const startDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    const context = event.currentTarget.getContext('2d');
-    if (!context) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const point = pointOnCanvas(event);
-    context.beginPath();
-    context.moveTo(point.x, point.y);
-    drawingRef.current = true;
-  };
-
-  const draw = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawingRef.current) return;
-    const context = event.currentTarget.getContext('2d');
-    if (!context) return;
-    const point = pointOnCanvas(event);
-    context.lineTo(point.x, point.y);
-    context.stroke();
-  };
-
-  const stopDrawing = () => { drawingRef.current = false; };
-
-  const clearWriting = () => {
-    const canvas = canvasRef.current;
-    const context = canvas?.getContext('2d');
-    if (!canvas || !context) return;
-    context.clearRect(0, 0, canvas.width, canvas.height);
-    const bounds = canvas.getBoundingClientRect();
-    context.fillStyle = '#fff';
-    context.fillRect(0, 0, bounds.width, bounds.height);
-    context.strokeStyle = '#cbd5e1';
-    context.lineWidth = 1;
-    context.setLineDash([5, 5]);
-    context.beginPath();
-    context.moveTo(bounds.width / 2, 0);
-    context.lineTo(bounds.width / 2, bounds.height);
-    context.moveTo(0, bounds.height / 2);
-    context.lineTo(bounds.width, bounds.height / 2);
-    context.stroke();
-    context.setLineDash([]);
-    context.strokeStyle = '#0f172a';
-    context.lineWidth = 5;
-    context.lineCap = 'round';
-    context.lineJoin = 'round';
   };
 
   const handleRating = async (rating: Rating) => {
@@ -361,6 +280,7 @@ export function FlashcardDeck({
 
   const { vocab, relearn } = current;
   const cardMode: CardMode = pickCardMode(vocab, mode);
+  const writingPromptActive = writingEnabled && /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]|[\ud840-\ud87f][\udc00-\udfff]/u.test(vocab.word);
   const masked = cardMode === 'cloze' ? maskExample(vocab) : null;
   const lapses = lapseCounts.get(vocab.id) || 0;
   const intervals = previewIntervals(vocab);
@@ -430,37 +350,28 @@ export function FlashcardDeck({
           </div>
 
           {/* Prompt side */}
-          {cardMode === 'classic' && (
+          {writingPromptActive ? (
+            <div className="space-y-1">
+              <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Write the Chinese characters for</p>
+              <p className="text-2xl font-bold leading-snug text-slate-900">{vocab.meaning}</p>
+              {vocab.phonetic && <p className="font-mono text-sm text-slate-600">Pinyin: {vocab.phonetic}</p>}
+            </div>
+          ) : cardMode === 'classic' && (
             <div className="space-y-2">
               {wordBlock}
               {vocab.phonetic && <p className="font-mono text-base text-slate-600">{vocab.phonetic}</p>}
             </div>
           )}
-          {(cardMode === 'reverse' || cardMode === 'typing') && (
+          {!writingPromptActive && (cardMode === 'reverse' || cardMode === 'typing') && (
             <div className="space-y-1">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{cardMode === 'typing' ? 'Type the English word for' : 'What is the English word for'}</p>
               <p className="text-2xl font-bold leading-snug text-slate-900">{vocab.meaning}</p>
             </div>
           )}
-          {writingEnabled && !showAnswer && (
-            <div className="w-full max-w-sm space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left">
-              <div className="flex items-center justify-between gap-2">
-                <p className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700"><PenLine className="h-3.5 w-3.5" /> Try writing this word</p>
-                <button type="button" onClick={clearWriting} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-white"><RotateCcw className="h-3 w-3" /> Clear</button>
-              </div>
-              <canvas ref={canvasRef} aria-label="Chinese character writing canvas" className="h-44 w-full touch-none rounded-xl border border-slate-200 bg-white" onPointerDown={startDrawing} onPointerMove={draw} onPointerUp={stopDrawing} onPointerCancel={stopDrawing} />
-              <button type="button" onClick={() => setShowWritingAnswer(true)} className="text-xs font-bold text-blue-700 hover:text-blue-900">Show writing answer</button>
-            </div>
+          {writingPromptActive && !showAnswer && (
+            <ChineseWritingPractice key={vocab.id} word={vocab.word} onRevealAnswer={reveal} />
           )}
-          {writingEnabled && showWritingAnswer && (
-            <div className="w-full max-w-sm rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-center">
-              <p className="text-xs font-bold uppercase tracking-wider text-indigo-700">Writing answer</p>
-              <p className="mt-2 text-4xl font-extrabold text-slate-900">{vocab.word}</p>
-              {vocab.phonetic && <p className="mt-1 font-mono text-sm text-slate-600">{vocab.phonetic}</p>}
-              <p className="mt-1 text-sm text-slate-700">{vocab.meaning}</p>
-            </div>
-          )}
-          {cardMode === 'cloze' && masked && (
+          {!writingPromptActive && cardMode === 'cloze' && masked && (
             <div className="space-y-3">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Fill in the blank</p>
               <p className="text-lg italic leading-relaxed text-slate-900">“{masked}”</p>
@@ -468,7 +379,7 @@ export function FlashcardDeck({
             </div>
           )}
 
-          {cardMode === 'typing' && !showAnswer && (
+          {cardMode === 'typing' && !writingPromptActive && !showAnswer && (
             <form onSubmit={submitTyped} className="flex w-full max-w-sm gap-2">
               <input
                 type="text"
@@ -486,7 +397,7 @@ export function FlashcardDeck({
             </form>
           )}
 
-          {!showAnswer ? (
+          {!showAnswer && !writingPromptActive ? (
             <button type="button" onClick={reveal} className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-6 py-3 text-sm font-bold text-white shadow-md shadow-blue-500/20 transition-all hover:-translate-y-0.5 hover:bg-blue-700">
               <Eye className="h-4 w-4" /> {cardMode === 'typing' ? 'I don’t know' : 'Show answer'} <kbd className="ml-1 rounded bg-white/20 px-1.5 text-[10px]">Space</kbd>
             </button>
@@ -498,7 +409,7 @@ export function FlashcardDeck({
                   {typedResult === 'correct' ? 'Correct!' : `You typed “${typed}”`}
                 </p>
               )}
-              {cardMode !== 'classic' && (
+              {(cardMode !== 'classic' || writingPromptActive) && (
                 <div className="space-y-1">
                   {wordBlock}
                   {vocab.phonetic && <p className="font-mono text-base text-slate-600">{vocab.phonetic}</p>}
