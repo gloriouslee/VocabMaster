@@ -152,7 +152,7 @@ export function FolderTree({
                 className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left"
               >
                 <FolderIcon className={`h-4 w-4 shrink-0 ${isSelected ? 'text-white' : 'text-blue-500'}`} />
-                <span className="min-w-0 flex-1 whitespace-normal break-words text-xs leading-tight [overflow-wrap:anywhere]">{folder.name}</span>
+                <span className="min-w-0 flex-1 whitespace-normal break-words text-xs leading-tight">{folder.name}</span>
                 {sharedFolders?.has(folder.id) && (
                   <span title={sharedFolders.get(folder.id) === 'public' ? 'Shared publicly' : 'Shared by link'} className="shrink-0">
                     <Share2 className={`h-3 w-3 ${isSelected ? 'text-white/80' : 'text-blue-500'}`} aria-label="Shared" />
@@ -172,8 +172,8 @@ export function FolderTree({
 
           {/* Quick Action buttons */}
           <div
-            className={`flex items-center space-x-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 ${
-              isSelected ? 'sm:opacity-100' : ''
+            className={`shrink-0 items-center space-x-1 ${
+              isSelected ? 'flex' : 'hidden sm:group-hover:flex'
             }`}
             onClick={(e) => e.stopPropagation()}
           >
