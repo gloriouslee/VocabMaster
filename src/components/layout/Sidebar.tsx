@@ -14,6 +14,7 @@ import {
   GraduationCap,
   Settings,
   Compass,
+  Network,
 } from 'lucide-react';
 
 export function Sidebar({ onNavigate, today = null }: { onNavigate?: () => void; today?: TodaySummary | null }) {
@@ -31,6 +32,12 @@ export function Sidebar({ onNavigate, today = null }: { onNavigate?: () => void;
       href: '/library',
       icon: FolderTree,
       active: pathname === '/library',
+    },
+    {
+      label: 'Mind Map',
+      href: '/mindmap',
+      icon: Network,
+      active: pathname.startsWith('/mindmap'),
     },
     {
       label: 'Explore',
