@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Volume2, Eye, Award, Pause, Undo2, AlertTriangle, Check, X } from 'lucide-react';
+import { Volume2, Eye, Award, Pause, Undo2, AlertTriangle, Check, X, RotateCcw, PenLine } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Vocabulary } from '@/types';
 import { Rating, previewIntervals } from '@/lib/spacedRepetition';
@@ -61,6 +61,10 @@ export function FlashcardDeck({
   const [isFinishing, setIsFinishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accent, setAccent] = useState<Accent>('en-US');
+  const [writingEnabled, setWritingEnabled] = useState(false);
+  const [showWritingAnswer, setShowWritingAnswer] = useState(false);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawingRef = useRef(false);
 
   const pendingRef = useRef<Pending | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -75,7 +79,36 @@ export function FlashcardDeck({
   useEffect(() => {
     const saved = window.localStorage.getItem(ACCENT_KEY);
     if (saved === 'en-US' || saved === 'en-GB') setAccent(saved);
+    setWritingEnabled(window.localStorage.getItem('vocabmaster.chineseWritingEnabled') === 'true');
   }, []);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    const bounds = canvas.getBoundingClientRect();
+    const scale = window.devicePixelRatio || 1;
+    canvas.width = bounds.width * scale;
+    canvas.height = bounds.height * scale;
+    context.scale(scale, scale);
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, bounds.width, bounds.height);
+    context.strokeStyle = '#cbd5e1';
+    context.lineWidth = 1;
+    context.setLineDash([5, 5]);
+    context.beginPath();
+    context.moveTo(bounds.width / 2, 0);
+    context.lineTo(bounds.width / 2, bounds.height);
+    context.moveTo(0, bounds.height / 2);
+    context.lineTo(bounds.width, bounds.height / 2);
+    context.stroke();
+    context.setLineDash([]);
+    context.strokeStyle = '#0f172a';
+    context.lineWidth = 5;
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
+  }, [index, showWritingAnswer, writingEnabled]);
 
   const handleSpeak = useCallback((text: string) => void speak(text), []);
 
@@ -122,6 +155,57 @@ export function FlashcardDeck({
     setShowAnswer(false);
     setTyped('');
     setTypedResult(null);
+    setShowWritingAnswer(false);
+  };
+
+  const pointOnCanvas = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    return { x: event.clientX - bounds.left, y: event.clientY - bounds.top };
+  };
+
+  const startDrawing = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const context = event.currentTarget.getContext('2d');
+    if (!context) return;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const point = pointOnCanvas(event);
+    context.beginPath();
+    context.moveTo(point.x, point.y);
+    drawingRef.current = true;
+  };
+
+  const draw = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!drawingRef.current) return;
+    const context = event.currentTarget.getContext('2d');
+    if (!context) return;
+    const point = pointOnCanvas(event);
+    context.lineTo(point.x, point.y);
+    context.stroke();
+  };
+
+  const stopDrawing = () => { drawingRef.current = false; };
+
+  const clearWriting = () => {
+    const canvas = canvasRef.current;
+    const context = canvas?.getContext('2d');
+    if (!canvas || !context) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    const bounds = canvas.getBoundingClientRect();
+    context.fillStyle = '#fff';
+    context.fillRect(0, 0, bounds.width, bounds.height);
+    context.strokeStyle = '#cbd5e1';
+    context.lineWidth = 1;
+    context.setLineDash([5, 5]);
+    context.beginPath();
+    context.moveTo(bounds.width / 2, 0);
+    context.lineTo(bounds.width / 2, bounds.height);
+    context.moveTo(0, bounds.height / 2);
+    context.lineTo(bounds.width, bounds.height / 2);
+    context.stroke();
+    context.setLineDash([]);
+    context.strokeStyle = '#0f172a';
+    context.lineWidth = 5;
+    context.lineCap = 'round';
+    context.lineJoin = 'round';
   };
 
   const handleRating = async (rating: Rating) => {
@@ -356,6 +440,24 @@ export function FlashcardDeck({
             <div className="space-y-1">
               <p className="text-xs font-bold uppercase tracking-wider text-slate-500">{cardMode === 'typing' ? 'Type the English word for' : 'What is the English word for'}</p>
               <p className="text-2xl font-bold leading-snug text-slate-900">{vocab.meaning}</p>
+            </div>
+          )}
+          {writingEnabled && !showAnswer && (
+            <div className="w-full max-w-sm space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-left">
+              <div className="flex items-center justify-between gap-2">
+                <p className="inline-flex items-center gap-1.5 text-xs font-bold text-slate-700"><PenLine className="h-3.5 w-3.5" /> Try writing this word</p>
+                <button type="button" onClick={clearWriting} className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-500 hover:bg-white"><RotateCcw className="h-3 w-3" /> Clear</button>
+              </div>
+              <canvas ref={canvasRef} aria-label="Chinese character writing canvas" className="h-44 w-full touch-none rounded-xl border border-slate-200 bg-white" onPointerDown={startDrawing} onPointerMove={draw} onPointerUp={stopDrawing} onPointerCancel={stopDrawing} />
+              <button type="button" onClick={() => setShowWritingAnswer(true)} className="text-xs font-bold text-blue-700 hover:text-blue-900">Show writing answer</button>
+            </div>
+          )}
+          {writingEnabled && showWritingAnswer && (
+            <div className="w-full max-w-sm rounded-2xl border border-indigo-100 bg-indigo-50 p-4 text-center">
+              <p className="text-xs font-bold uppercase tracking-wider text-indigo-700">Writing answer</p>
+              <p className="mt-2 text-4xl font-extrabold text-slate-900">{vocab.word}</p>
+              {vocab.phonetic && <p className="mt-1 font-mono text-sm text-slate-600">{vocab.phonetic}</p>}
+              <p className="mt-1 text-sm text-slate-700">{vocab.meaning}</p>
             </div>
           )}
           {cardMode === 'cloze' && masked && (

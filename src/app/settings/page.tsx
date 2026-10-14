@@ -56,6 +56,7 @@ export default function SettingsPage() {
   const [accent, setAccent] = useState<'en-US' | 'en-GB'>('en-US');
   const [exam, setExam] = useState<ExamGoal | null>(null);
   const [chinese, setChinese] = useState<ChineseVariant>('zh-CN');
+  const [chineseWritingEnabled, setChineseWritingEnabled] = useState(false);
   const [voices, setVoices] = useState<ReturnType<typeof summariseVoices> | null>(null);
   const [newWords, setNewWords] = useState(0);
   const [notice, setNotice] = useState<{ section: string; value: Notice }>({ section: '', value: null });
@@ -77,6 +78,7 @@ export default function SettingsPage() {
   useEffect(() => {
     void loadProfile();
     setChinese(readSpeechPreferences().chinese);
+    setChineseWritingEnabled(window.localStorage.getItem('vocabmaster.chineseWritingEnabled') === 'true');
     void loadVoices().then((list) => setVoices(summariseVoices(list)));
     setPrefs(loadDailyPrefs());
     setExam(loadExamGoal());
@@ -116,6 +118,11 @@ export default function SettingsPage() {
   const updateChinese = (next: ChineseVariant) => {
     setChinese(next);
     persistSetting(CHINESE_VARIANT_KEY, next);
+  };
+
+  const updateChineseWriting = (enabled: boolean) => {
+    setChineseWritingEnabled(enabled);
+    persistSetting('vocabmaster.chineseWritingEnabled', String(enabled));
   };
 
   const updateExam = (date: string) => {
@@ -282,6 +289,16 @@ export default function SettingsPage() {
             </div>
             {voices !== null && voices.chinese === 0 && <p className="text-xs text-amber-800">{missingVoiceMessage('zh-CN')}</p>}
           </div>
+        </Section>
+
+        <Section title="Chinese writing practice" description="Turn this on to show a Chinese character writing canvas during flashcard study. It stays hidden for English study unless enabled here.">
+          <label className="flex cursor-pointer items-start gap-3">
+            <input type="checkbox" checked={chineseWritingEnabled} onChange={(event) => updateChineseWriting(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+            <span>
+              <span className="block text-sm font-semibold text-slate-800">Enable Chinese writing practice</span>
+              <span className="mt-0.5 block text-xs text-slate-500">Use when your vocabulary contains Chinese characters. The prompt and answer use each word’s meaning and pinyin.</span>
+            </span>
+          </label>
         </Section>
 
         <Section title="Exam goal" description="Set your exam date and the app tells you how many new words to learn each day.">
