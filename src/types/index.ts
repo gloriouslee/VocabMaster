@@ -12,6 +12,7 @@ export interface Folder {
 
 export interface Vocabulary {
   id: string;
+  importBatchId?: string | null;
   folderId: string | null;
   word: string;
   meaning: string; // Vietnamese meaning
@@ -26,6 +27,14 @@ export interface Vocabulary {
   easeFactor: number;
   createdAt: string;
   lastReviewedAt?: string;
+}
+
+export interface VocabularyImportBatch {
+  id: string;
+  fileName: string;
+  wordCount: number;
+  createdAt: string;
+  deletedAt: string | null;
 }
 
 export interface ReviewLog {

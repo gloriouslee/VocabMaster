@@ -1,6 +1,6 @@
 import { supabase } from '@/lib/supabase';
 import type { Database, Tables, TablesInsert, TablesUpdate } from '@/types/database';
-import { Folder, Vocabulary, QuizResult, MistakeLog, UserStats, WordType } from '@/types';
+import { Folder, Vocabulary, QuizResult, MistakeLog, UserStats, WordType, VocabularyImportBatch } from '@/types';
 import { Rating } from './spacedRepetition';
 import type { TodayActivity } from './dailyPlan';
 import { normalizeWord } from './normalizeWord';
@@ -12,6 +12,11 @@ type VocabularyRow = Tables<'vocabularies'>;
 type QuizResultRow = Tables<'quiz_results'>;
 type MistakeRow = Tables<'mistake_logs'>;
 type StudySessionRow = Tables<'study_sessions'>;
+type VocabularyImportBatchRow = Tables<'vocabulary_import_batches'>;
+
+function mapImportBatch(row: VocabularyImportBatchRow): VocabularyImportBatch {
+  return { id: row.id, fileName: row.file_name, wordCount: row.word_count, createdAt: row.created_at, deletedAt: row.deleted_at };
+}
 
 export interface StudySession {
   id: string;
@@ -95,6 +100,7 @@ function mapFolder(row: FolderRow): Folder {
 function mapVocabulary(row: VocabularyRow): Vocabulary {
   return {
     id: row.id,
+    importBatchId: row.import_batch_id,
     folderId: row.folder_id,
     word: row.word,
     meaning: row.meaning,
@@ -244,7 +250,7 @@ export const StorageService = {
     const userId = await currentUserId();
     const { data, error } = await client().from('vocabularies').insert(mapVocabularyInput(vocab, userId)).select('*').single();
     if (error) throw error;
-    return mapVocabulary(data);
+    return mapVocabulary(data as VocabularyRow);
   },
 
   async bulkAddVocabularies(items: Array<Omit<Vocabulary, 'id' | 'createdAt' | 'status' | 'nextReviewAt' | 'intervalDays' | 'repetitions' | 'easeFactor'> & Partial<Vocabulary>>): Promise<Vocabulary[]> {
@@ -254,6 +260,42 @@ export const StorageService = {
     const { data, error } = await client().from('vocabularies').insert(rows).select('*');
     if (error) throw error;
     return data.map(mapVocabulary);
+  },
+
+  async getVocabularyImportBatches(): Promise<VocabularyImportBatch[]> {
+    const userId = await currentUserId();
+    const rows = await fetchAll((from, to) => client().from('vocabulary_import_batches')
+      .select('*').eq('user_id', userId).order('created_at', { ascending: false }).range(from, to));
+    return rows.map(mapImportBatch);
+  },
+
+  async createVocabularyImportBatch(
+    fileName: string,
+    items: Array<Omit<Vocabulary, 'id' | 'createdAt' | 'status' | 'nextReviewAt' | 'intervalDays' | 'repetitions' | 'easeFactor'> & Partial<Vocabulary>>,
+    createdFolderIds: string[] = [],
+  ): Promise<VocabularyImportBatch> {
+    const userId = await currentUserId();
+    const rows = items.map((item) => {
+      const { user_id: _userId, ...row } = mapVocabularyInput(item, userId);
+      return row;
+    });
+    const { data, error } = await client().rpc('create_vocabulary_import_batch', {
+      p_file_name: fileName,
+      p_vocabulary_rows: rows as unknown as Database['public']['Functions']['create_vocabulary_import_batch']['Args']['p_vocabulary_rows'],
+      p_created_folder_ids: createdFolderIds,
+    });
+    if (error) throw error;
+    return mapImportBatch(data);
+  },
+
+  async deleteVocabularyImportBatch(id: string): Promise<{ wordsDeleted: number; foldersDeleted: number }> {
+    const { data, error } = await client().rpc('delete_vocabulary_import_batch', { p_batch_id: id });
+    if (error) throw error;
+    const result = data as { words_deleted?: unknown; folders_deleted?: unknown };
+    return {
+      wordsDeleted: typeof result.words_deleted === 'number' ? result.words_deleted : 0,
+      foldersDeleted: typeof result.folders_deleted === 'number' ? result.folders_deleted : 0,
+    };
   },
 
   async updateVocabulary(id: string, updates: Partial<Vocabulary>): Promise<Vocabulary | null> {
@@ -289,7 +331,7 @@ export const StorageService = {
       p_rating: rating,
     });
     if (error) throw error;
-    return mapVocabulary(data);
+    return mapVocabulary(data as VocabularyRow);
   },
 
   /** Flashcard-only lapses; quiz misses are tracked through mistake_logs instead. */

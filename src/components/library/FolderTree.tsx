@@ -148,10 +148,11 @@ export function FolderTree({
                 type="button"
                 onClick={() => onSelectFolder(folder.id)}
                 aria-pressed={isSelected}
+                title={folder.name}
                 className="flex min-w-0 flex-1 items-center gap-2 py-2 text-left"
               >
                 <FolderIcon className={`h-4 w-4 shrink-0 ${isSelected ? 'text-white' : 'text-blue-500'}`} />
-                <span className="truncate text-xs">{folder.name}</span>
+                <span className="min-w-0 flex-1 whitespace-normal break-words text-xs leading-tight [overflow-wrap:anywhere]">{folder.name}</span>
                 {sharedFolders?.has(folder.id) && (
                   <span title={sharedFolders.get(folder.id) === 'public' ? 'Shared publicly' : 'Shared by link'} className="shrink-0">
                     <Share2 className={`h-3 w-3 ${isSelected ? 'text-white/80' : 'text-blue-500'}`} aria-label="Shared" />
@@ -162,7 +163,7 @@ export function FolderTree({
                     <Users className={`h-3 w-3 ${isSelected ? 'text-white/80' : 'text-emerald-600'}`} aria-label="Subscribed" />
                   </span>
                 )}
-                <span className={`ml-auto rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                <span className={`ml-auto shrink-0 rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${isSelected ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'}`}>
                   {wordCounts.get(folder.id) || 0}
                 </span>
               </button>

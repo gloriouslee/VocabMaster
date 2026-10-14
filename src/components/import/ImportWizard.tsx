@@ -22,6 +22,7 @@ import { RawImportRecord, Vocabulary, Folder, WordType } from '@/types';
 import { normalizeWord } from '@/lib/normalizeWord';
 
 export interface ConfirmImportPayload {
+  sourceFileName: string;
   records: RawImportRecord[];
   targetFolderId: string | null;
   newFolderName?: string | null;
@@ -50,6 +51,7 @@ export function ImportWizard({
   const [saving, setSaving] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
+  const [sourceFileName, setSourceFileName] = useState('');
 
   const handleDownloadTemplate = (type: 'xlsx' | 'csv') => {
     const worksheet = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS]);
@@ -81,6 +83,7 @@ export function ImportWizard({
 
     try {
       const parsed = await parseImportFile(file, existingVocabularies);
+      setSourceFileName(file.name);
       setRecords(parsed);
 
       const hasFileFolders = parsed.some((r) => Boolean(r.folderName));
@@ -165,7 +168,12 @@ export function ImportWizard({
         targetFolderId: folderSelectionMode === 'existing' ? targetFolderId : null,
         newFolderName: folderSelectionMode === 'new' ? newFolderName.trim() : null,
         useFileFolders: folderSelectionMode === 'file',
+        sourceFileName,
       });
+      setRecords([]);
+      setSourceFileName('');
+      setStep('upload');
+      setNewFolderName('');
     } catch (error) {
       setErrorMsg(error instanceof Error ? error.message : 'Unable to save imported vocabulary.');
     } finally {

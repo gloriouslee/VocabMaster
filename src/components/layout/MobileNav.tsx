@@ -3,12 +3,11 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { LayoutDashboard, FolderTree, Layers, HelpCircle, Menu, Network } from 'lucide-react';
+import { LayoutDashboard, FolderTree, Layers, HelpCircle, Menu } from 'lucide-react';
 
 const ITEMS = [
   { label: 'Home', href: '/', icon: LayoutDashboard },
   { label: 'Library', href: '/library', icon: FolderTree },
-  { label: 'Mind Map', href: '/mindmap', icon: Network },
   { label: 'Study', href: '/study', icon: Layers },
   { label: 'Quiz', href: '/quiz', icon: HelpCircle },
 ];

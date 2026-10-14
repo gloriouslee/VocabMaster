@@ -268,7 +268,7 @@ export function VocabTable({
                     </td>
                     <td className="px-5 py-4">
                       {vocab.folderId && folderMap.get(vocab.folderId)
-                        ? <span className="inline-flex max-w-[150px] truncate rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">{folderMap.get(vocab.folderId)}</span>
+                        ? <span title={folderMap.get(vocab.folderId)} className="inline-flex max-w-[190px] whitespace-normal break-words rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium leading-tight text-slate-600">{folderMap.get(vocab.folderId)}</span>
                         : <span className="text-xs text-slate-500">Uncategorized</span>}
                     </td>
                     <td className="px-5 py-4">{getStatusBadge(vocab.status)}<p className="mt-1 text-[11px] text-slate-500">{formatDue(vocab.nextReviewAt)}</p></td>
@@ -302,7 +302,7 @@ export function VocabTable({
                   <p className="text-sm font-medium leading-relaxed text-slate-800">{vocab.meaning}</p>
                   {vocab.example && <p className="mt-1 text-xs italic leading-relaxed text-slate-500">“{vocab.example}”</p>}
                   <div className="mt-3 flex items-center justify-between gap-2">
-                    <span className="truncate rounded-lg bg-slate-100 px-2.5 py-1 text-xs text-slate-600">{vocab.folderId ? folderMap.get(vocab.folderId) || 'Uncategorized' : 'Uncategorized'}</span>
+                    <span title={vocab.folderId ? folderMap.get(vocab.folderId) : 'Uncategorized'} className="max-w-[65%] whitespace-normal break-words rounded-lg bg-slate-100 px-2.5 py-1 text-xs leading-tight text-slate-600">{vocab.folderId ? folderMap.get(vocab.folderId) || 'Uncategorized' : 'Uncategorized'}</span>
                     <div className="flex shrink-0 gap-1">
                       <button onClick={() => onEditWord(vocab)} aria-label={`Edit ${vocab.word}`} className="rounded-lg p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-600"><Edit className="h-4 w-4" /></button>
                       <button onClick={() => onDeleteWord(vocab.id)} aria-label={`Delete ${vocab.word}`} className="rounded-lg p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>

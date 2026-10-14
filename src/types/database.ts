@@ -417,6 +417,7 @@ export type Database = {
           example: string
           folder_id: string | null
           id: string
+          import_batch_id: string | null
           interval_days: number
           last_reviewed_at: string | null
           level: string
@@ -436,6 +437,7 @@ export type Database = {
           example?: string
           folder_id?: string | null
           id?: string
+          import_batch_id?: string | null
           interval_days?: number
           last_reviewed_at?: string | null
           level?: string
@@ -455,6 +457,7 @@ export type Database = {
           example?: string
           folder_id?: string | null
           id?: string
+          import_batch_id?: string | null
           interval_days?: number
           last_reviewed_at?: string | null
           level?: string
@@ -478,11 +481,49 @@ export type Database = {
           },
         ]
       }
+      vocabulary_import_batches: {
+        Row: {
+          id: string
+          user_id: string
+          file_name: string
+          word_count: number
+          created_folder_ids: string[]
+          created_at: string
+          deleted_at: string | null
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          file_name: string
+          word_count: number
+          created_folder_ids?: string[]
+          created_at?: string
+          deleted_at?: string | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          file_name?: string
+          word_count?: number
+          created_folder_ids?: string[]
+          created_at?: string
+          deleted_at?: string | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
+      create_vocabulary_import_batch: {
+        Args: { p_file_name: string; p_vocabulary_rows: Json; p_created_folder_ids?: string[] }
+        Returns: Database["public"]["Tables"]["vocabulary_import_batches"]["Row"]
+      }
+      delete_vocabulary_import_batch: {
+        Args: { p_batch_id: string }
+        Returns: Json
+      }
       publish_collection: {
         Args: {
           p_author_avatar: string | null
