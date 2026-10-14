@@ -164,6 +164,7 @@ export type Database = {
           id: string
           rating: Database["public"]["Enums"]["review_rating"]
           reviewed_at: string
+          source: string
           user_id: string
           vocabulary_id: string
         }
@@ -171,6 +172,7 @@ export type Database = {
           id?: string
           rating: Database["public"]["Enums"]["review_rating"]
           reviewed_at?: string
+          source?: string
           user_id: string
           vocabulary_id: string
         }
@@ -178,6 +180,7 @@ export type Database = {
           id?: string
           rating?: Database["public"]["Enums"]["review_rating"]
           reviewed_at?: string
+          source?: string
           user_id?: string
           vocabulary_id?: string
         }
@@ -583,6 +586,7 @@ export type Database = {
           p_correct_count: number
           p_folder_ids?: string[]
           p_mistakes?: Json
+          p_reviews?: Json
           p_score_percent: number
           p_total_questions: number
           p_wrong_count: number
@@ -606,6 +610,7 @@ export type Database = {
       record_vocabulary_review: {
         Args: {
           p_rating: Database["public"]["Enums"]["review_rating"]
+          p_source?: string
           p_vocabulary_id: string
         }
         Returns: {

@@ -183,6 +183,10 @@ export default function QuizPage() {
     setPreviousScore(history[0]?.scorePercent ?? null);
 
     if (!isPractice) {
+      const reviewOutcomes = [...new Map(answers.map((answer) => [
+        answer.question.vocab.id,
+        { vocabularyId: answer.question.vocab.id, rating: answer.isCorrect ? 'good' as const : 'forgot' as const },
+      ])).values()];
       const result = await StorageService.saveQuizResult({
         scorePercent: answers.length > 0 ? Math.round((correctCount / answers.length) * 100) : 0,
         totalQuestions: answers.length,
@@ -195,9 +199,10 @@ export default function QuizPage() {
         meaning: answer.question.vocab.meaning,
         userAnswer: answer.selectedAnswer,
         correctAnswer: answer.question.correctAnswer,
-      })));
+      })), reviewOutcomes);
       persistSnapshot(null);
       setHistory((current) => [result, ...current]);
+      window.dispatchEvent(new Event('vocabmaster:study-activity-updated'));
 
       // Answering a previously missed word correctly clears its open mistakes.
       const correctIds = new Set(answers.filter((answer) => answer.isCorrect).map((answer) => answer.question.vocab.id));
@@ -209,16 +214,11 @@ export default function QuizPage() {
           .catch(() => undefined);
       }
 
-      // Rescheduling is best effort: the quiz result is already saved.
-      const uniqueMissed = [...new Map(wrong.map((answer) => [answer.question.vocab.id, answer.question.vocab])).values()];
       try {
-        const rescheduled = await StorageService.applyQuizLapses(uniqueMissed);
-        setScheduleNote(rescheduled > 0
-          ? `${rescheduled} missed ${rescheduled === 1 ? 'word is' : 'words are'} due for review today in your flashcards.`
-          : null);
-        if (rescheduled > 0) setVocabularies(await StorageService.getVocabularies());
+        setVocabularies(await StorageService.getVocabularies());
+        setScheduleNote(`All ${reviewOutcomes.length} quiz words were added to your shared review history. Correct answers were scheduled as Good; missed answers as Forgot. They count toward today's study activity.`);
       } catch {
-        setScheduleNote('Your result was saved, but missed words could not be rescheduled for review.');
+        setScheduleNote('Your quiz result and review schedule were saved. Reload the quiz to refresh the updated word list.');
       }
     } else {
       setScheduleNote(null);

@@ -39,7 +39,9 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
     }
 
     let active = true;
+    let currentEmail: string | null = null;
     const loadUserData = async (email: string | null) => {
+      currentEmail = email;
       setUserEmail(email);
       if (!email) {
         setStats(undefined);
@@ -71,6 +73,10 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
         if (active) setAuthError(error instanceof Error ? error.message : 'Unable to load your account data.');
       }
     };
+    const refreshStudySummary = () => {
+      if (currentEmail) void loadUserData(currentEmail);
+    };
+    window.addEventListener('vocabmaster:study-activity-updated', refreshStudySummary);
 
     void supabase.auth.getSession().then(({ data, error }) => {
       if (!active) return;
@@ -96,6 +102,7 @@ export function Shell({ children, requireAuth = true }: ShellProps) {
 
     return () => {
       active = false;
+      window.removeEventListener('vocabmaster:study-activity-updated', refreshStudySummary);
       authListener.subscription.unsubscribe();
     };
   }, [requireAuth, router]);

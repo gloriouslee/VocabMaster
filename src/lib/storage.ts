@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import type { Database, Tables, TablesInsert, TablesUpdate } from '@/types/database';
 import { Folder, Vocabulary, QuizResult, MistakeLog, UserStats, WordType } from '@/types';
-import { Rating, scheduleReview } from './spacedRepetition';
+import { Rating } from './spacedRepetition';
 import type { TodayActivity } from './dailyPlan';
 import { normalizeWord } from './normalizeWord';
 import { Backup, orderFoldersParentFirst } from './backup';
@@ -18,6 +18,11 @@ export interface StudySession {
   vocabularyIds: string[];
   currentIndex: number;
   ratingCounts: { forgot: number; hard: number; good: number; easy: number };
+}
+
+export interface QuizReviewOutcome {
+  vocabularyId: string;
+  rating: 'forgot' | 'good';
 }
 
 function mapStudySession(row: StudySessionRow): StudySession {
@@ -287,14 +292,14 @@ export const StorageService = {
     return mapVocabulary(data);
   },
 
-  /** Number of times each word was rated "forgot" (all words when no ids are given). */
+  /** Flashcard-only lapses; quiz misses are tracked through mistake_logs instead. */
   async getLapseCounts(vocabularyIds?: string[]): Promise<Map<string, number>> {
     const counts = new Map<string, number>();
     if (vocabularyIds && vocabularyIds.length === 0) return counts;
     const userId = await currentUserId();
     const wanted = vocabularyIds ? new Set(vocabularyIds) : null;
     const rows = await fetchAll((from, to) =>
-      client().from('review_logs').select('vocabulary_id').eq('user_id', userId).eq('rating', 'forgot').order('id').range(from, to));
+      client().from('review_logs').select('vocabulary_id').eq('user_id', userId).eq('rating', 'forgot').eq('source', 'study').order('id').range(from, to));
     for (const row of rows) {
       if (wanted && !wanted.has(row.vocabulary_id)) continue;
       counts.set(row.vocabulary_id, (counts.get(row.vocabulary_id) || 0) + 1);
@@ -350,30 +355,6 @@ export const StorageService = {
         return this.updateVocabulary(id, { nextReviewAt: new Date(now + dayOffset * dayMs).toISOString() });
       }));
     }
-  },
-
-  /**
-   * A word missed in a quiz is treated like a flashcard lapse: it is due again now and
-   * its ease drops. New (never studied) words are left alone.
-   */
-  async applyQuizLapses(words: Vocabulary[]): Promise<number> {
-    const missed = words.filter((word) => word.status !== 'new');
-    for (let start = 0; start < missed.length; start += 10) {
-      await Promise.all(missed.slice(start, start + 10).map((word) => {
-        const next = scheduleReview(
-          { intervalDays: word.intervalDays || 0, repetitions: word.repetitions || 0, easeFactor: word.easeFactor || 2.5 },
-          'forgot',
-        );
-        return this.updateVocabulary(word.id, {
-          nextReviewAt: new Date().toISOString(),
-          intervalDays: next.intervalDays,
-          repetitions: next.repetitions,
-          easeFactor: next.easeFactor,
-          status: next.status,
-        });
-      }));
-    }
-    return missed.length;
   },
 
   /** Adds the built-in starter words (skipping any word already in the library). */
@@ -501,6 +482,7 @@ export const StorageService = {
   async saveQuizResult(
     result: Omit<QuizResult, 'id' | 'createdAt'>,
     mistakes: Array<Omit<MistakeLog, 'id' | 'createdAt' | 'resolved'>> = [],
+    reviews: QuizReviewOutcome[] = [],
   ): Promise<QuizResult> {
     const { data, error } = await client().rpc('record_quiz_attempt', {
       p_score_percent: result.scorePercent,
@@ -515,6 +497,7 @@ export const StorageService = {
         user_answer: mistake.userAnswer,
         correct_answer: mistake.correctAnswer,
       })),
+      p_reviews: reviews.map((review) => ({ vocabulary_id: review.vocabularyId, rating: review.rating })),
     });
     if (error) throw error;
     return mapQuizResult(data, result.folderIds || []);
