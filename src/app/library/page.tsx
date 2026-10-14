@@ -14,6 +14,7 @@ import { Toast, ToastMessage } from '@/components/common/Toast';
 import { ShareDialog } from '@/components/library/ShareDialog';
 import { ExploreService, MyCollection, MySubscription } from '@/lib/explore';
 import { normalizeWord } from '@/lib/normalizeWord';
+import { countDueReviews } from '@/lib/dailyPlan';
 import { Folder, Vocabulary } from '@/types';
 
 /** Reads ?q= from the URL (set by the header search) and reports it to the page. */
@@ -55,7 +56,7 @@ export default function LibraryPage() {
     }
     return counts;
   }, [vocabularies, folders]);
-  const dueCount = vocabularies.filter((word) => new Date(word.nextReviewAt).getTime() <= Date.now()).length;
+  const dueCount = countDueReviews(vocabularies);
   const masteredCount = vocabularies.filter((word) => word.status === 'mastered').length;
 
   const refreshData = async () => {

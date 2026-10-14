@@ -17,7 +17,7 @@ import {
   Download
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { parseImportFile } from '@/lib/excelCsvParser';
+import { MAX_IMPORT_FILE_BYTES, MAX_IMPORT_ROWS, parseImportFile } from '@/lib/excelCsvParser';
 import { RawImportRecord, Vocabulary, Folder, WordType } from '@/types';
 import { normalizeWord } from '@/lib/normalizeWord';
 
@@ -180,7 +180,7 @@ export function ImportWizard({
         <div>
           <h2 className="text-xl font-bold text-slate-900">Import Vocabulary List</h2>
           <p className="text-xs text-slate-500 mt-1">
-            Upload Excel (.xlsx) or CSV (.csv) files to quickly expand your IELTS vocabulary library.
+            Upload Excel (.xlsx) or CSV (.csv) files. Each file can be up to {(MAX_IMPORT_FILE_BYTES / (1024 * 1024)).toLocaleString()} MB and {MAX_IMPORT_ROWS.toLocaleString()} rows.
           </p>
         </div>
 

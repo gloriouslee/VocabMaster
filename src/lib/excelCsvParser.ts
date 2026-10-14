@@ -3,12 +3,16 @@ import Papa from 'papaparse';
 import { RawImportRecord, Vocabulary, WordType } from '@/types';
 import { normalizeWord } from './normalizeWord';
 
-const VALID_WORD_TYPES: WordType[] = ['noun', 'verb', 'adjective', 'adverb', 'phrase', 'idiom', 'other'];
+export const MAX_IMPORT_FILE_BYTES = 20 * 1024 * 1024;
+export const MAX_IMPORT_ROWS = 10_000;
 
 export async function parseImportFile(
   file: File,
   existingVocabularies: Vocabulary[]
 ): Promise<RawImportRecord[]> {
+  if (file.size > MAX_IMPORT_FILE_BYTES) {
+    throw new Error('This file is larger than 20 MB. Split it into smaller files and try again.');
+  }
   const fileName = file.name.toLowerCase();
   let rows: any[] = [];
 
@@ -18,6 +22,10 @@ export async function parseImportFile(
     rows = await parseExcel(file);
   } else {
     throw new Error('Unsupported file format. Please upload a .csv or .xlsx file.');
+  }
+
+  if (rows.length > MAX_IMPORT_ROWS) {
+    throw new Error(`This file has ${rows.length.toLocaleString()} rows. Import up to ${MAX_IMPORT_ROWS.toLocaleString()} rows at a time.`);
   }
 
   const existingWordSet = new Set(
@@ -38,9 +46,8 @@ export async function parseImportFile(
 
     if (!word) errors.push('Missing required field: Word');
     if (!meaning) errors.push('Missing required field: Vietnamese Meaning');
-    if (!rawWordType) errors.push('Missing required field: Word Type');
-
-    let normalizedWordType: WordType = 'noun';
+    // Word type is optional in many source lists; use a neutral fallback instead of rejecting the row.
+    let normalizedWordType: WordType = 'other';
     if (rawWordType) {
       const lower = rawWordType.toLowerCase();
       if (lower.startsWith('n')) normalizedWordType = 'noun';

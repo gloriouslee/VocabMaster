@@ -330,7 +330,7 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        <Section id="backup-restore" title="Backup and restore" description="Download your whole library with learning progress as a JSON file, or restore one. Restoring never deletes anything.">
+        <Section id="backup-restore" title="Backup and restore" description="Download your folders, words, and review schedules as a JSON file, or restore one additively. Quiz history, mistake logs, and account settings are not included; restoring never deletes anything.">
           <div className="flex flex-wrap items-center gap-3">
             <button type="button" onClick={() => void handleExport()} disabled={isBusy} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60">Download backup</button>
             <button type="button" onClick={() => fileInput.current?.click()} disabled={isBusy} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">Restore from file…</button>

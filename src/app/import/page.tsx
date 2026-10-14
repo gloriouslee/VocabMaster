@@ -71,8 +71,12 @@ export default function ImportPage() {
       });
     }
 
-    const imported = await StorageService.bulkAddVocabularies(toInsert);
-    alert(`Successfully imported ${imported.length} vocabulary words!`);
+    let importedCount = 0;
+    for (let start = 0; start < toInsert.length; start += 200) {
+      const imported = await StorageService.bulkAddVocabularies(toInsert.slice(start, start + 200));
+      importedCount += imported.length;
+    }
+    alert(`Successfully imported ${importedCount} vocabulary words!`);
     router.push('/library');
   };
 

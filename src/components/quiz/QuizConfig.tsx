@@ -160,7 +160,13 @@ export function QuizConfig({
       )}
       {!tooFewWords && noSourceWords && (
         <p className="text-center text-sm text-slate-500">
-          {source === 'due' ? 'Nothing is due in this scope right now.' : 'No mastered words yet in this scope.'} Pick another word source.
+          {source === 'due'
+            ? 'Nothing is due in this scope right now.'
+            : source === 'mastered'
+              ? 'No mastered words yet in this scope.'
+              : source === 'weak'
+                ? 'No words meet the weak-word criteria in this scope yet.'
+                : 'No words are available in this scope.'} Pick another word source.
         </p>
       )}
 

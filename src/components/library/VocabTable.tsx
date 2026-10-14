@@ -38,6 +38,8 @@ const statusLabels: Record<VocabStatus, string> = {
   mastered: 'Mastered',
 };
 
+const PAGE_SIZE = 50;
+
 function formatDue(iso: string): string {
   const days = Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000);
   if (days <= 0) return 'Due now';
@@ -56,7 +58,7 @@ export function VocabTable({
 }: VocabTableProps) {
   const [searchQuery, setSearchQuery] = useState(externalSearch);
   useEffect(() => setSearchQuery(externalSearch), [externalSearch]);
-  const [statusFilter, setStatusFilter] = useState<VocabStatus | 'all'>('all');
+  const [statusFilter, setStatusFilter] = useState<VocabStatus | 'due' | 'all'>('all');
   const folderMap = new Map(folders.map((folder) => [folder.id, folder.name]));
   const selectedFolderName = selectedFolderId ? folderMap.get(selectedFolderId) : null;
   const query = searchQuery.trim().toLocaleLowerCase();
@@ -65,6 +67,7 @@ export function VocabTable({
     [folders, selectedFolderId],
   );
   const [sortBy, setSortBy] = useState<'newest' | 'az' | 'due'>('newest');
+  const [page, setPage] = useState(0);
 
   const filtered = vocabularies.filter((vocab) => {
     const matchesSearch = !query || [
@@ -74,7 +77,10 @@ export function VocabTable({
       vocab.phonetic || '',
       vocab.level || '',
     ].some((value) => value.toLocaleLowerCase().includes(query));
-    return matchesSearch && (statusFilter === 'all' || vocab.status === statusFilter) &&
+    const matchesStatus = statusFilter === 'all' || (statusFilter === 'due'
+      ? vocab.status !== 'new' && new Date(vocab.nextReviewAt).getTime() <= Date.now()
+      : vocab.status === statusFilter);
+    return matchesSearch && matchesStatus &&
       (!folderScope || (vocab.folderId !== null && folderScope.has(vocab.folderId)));
   }).sort((a, b) => {
     if (sortBy === 'az') return a.word.localeCompare(b.word);
@@ -82,10 +88,16 @@ export function VocabTable({
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
+  useEffect(() => { setPage(0); }, [selectedFolderId, sortBy, statusFilter]);
+  useEffect(() => { setPage((current) => Math.min(current, Math.max(0, Math.ceil(filtered.length / PAGE_SIZE) - 1))); }, [filtered.length]);
+
   const hasActiveFilters = Boolean(query || statusFilter !== 'all' || selectedFolderId);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const visible = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
   const clearFilters = () => {
     setSearchQuery('');
     setStatusFilter('all');
+    setPage(0);
     onClearFolder();
   };
 
@@ -143,7 +155,7 @@ export function VocabTable({
               placeholder="Search words, meanings, examples…"
               aria-label="Search vocabulary"
               value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              onChange={(event) => { setSearchQuery(event.target.value); setPage(0); }}
               className="w-full rounded-xl border border-slate-200 bg-slate-50 py-3 pl-10 pr-4 text-sm outline-none transition focus:border-blue-400 focus:bg-white focus:ring-4 focus:ring-blue-50"
             />
           </label>
@@ -165,13 +177,14 @@ export function VocabTable({
               <select
                 aria-label="Filter by status"
                 value={statusFilter}
-                onChange={(event) => setStatusFilter(event.target.value as VocabStatus | 'all')}
+                onChange={(event) => { setStatusFilter(event.target.value as VocabStatus | 'due' | 'all'); setPage(0); }}
                 className="max-w-[135px] bg-transparent text-sm text-slate-800 outline-none"
               >
                 <option value="all">All statuses</option>
                 <option value="new">New</option>
                 <option value="learning">Learning</option>
                 <option value="mastered">Mastered</option>
+                <option value="due">Due now</option>
               </select>
             </label>
             <label className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
@@ -194,7 +207,7 @@ export function VocabTable({
             )}
           </div>
           <p aria-live="polite" className="text-xs font-medium text-slate-500">
-            Showing <span className="font-bold text-slate-800">{filtered.length}</span> of {vocabularies.length} words
+            Showing <span className="font-bold text-slate-800">{filtered.length === 0 ? 0 : page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, filtered.length)}</span> of {filtered.length} matching · {vocabularies.length} total
           </p>
         </div>
       </div>
@@ -237,7 +250,7 @@ export function VocabTable({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-sm">
-                {filtered.map((vocab) => (
+                {visible.map((vocab) => (
                   <tr key={vocab.id} className="transition-colors hover:bg-slate-50/70">
                     <td className="px-5 py-4">
                       <div className="flex items-start gap-2">
@@ -272,7 +285,7 @@ export function VocabTable({
           </div>
 
           <ul className="divide-y divide-slate-100 md:hidden">
-            {filtered.map((vocab) => (
+            {visible.map((vocab) => (
               <li key={vocab.id} className="space-y-3 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-2">
@@ -301,6 +314,11 @@ export function VocabTable({
           </ul>
         </>
       )}
+      {filtered.length > PAGE_SIZE && <div className="flex items-center justify-between border-t border-slate-100 px-4 py-3 sm:px-5">
+        <button type="button" onClick={() => setPage((value) => Math.max(0, value - 1))} disabled={page === 0} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-40">Previous</button>
+        <span className="text-xs text-slate-500">Page {page + 1} of {pageCount}</span>
+        <button type="button" onClick={() => setPage((value) => Math.min(pageCount - 1, value + 1))} disabled={page + 1 >= pageCount} className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-700 disabled:opacity-40">Next</button>
+      </div>}
     </section>
   );
 }
