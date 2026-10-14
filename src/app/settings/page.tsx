@@ -34,9 +34,9 @@ type Notice = { tone: 'ok' | 'error'; text: string } | null;
 
 const selectClass = 'mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-800';
 
-function Section({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+function Section({ title, description, children, id }: { title: string; description: string; children: React.ReactNode; id?: string }) {
   return (
-    <section className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <section id={id} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
       <div>
         <h2 className="text-base font-bold text-slate-900">{title}</h2>
         <p className="mt-0.5 text-xs text-slate-500">{description}</p>
@@ -330,7 +330,7 @@ export default function SettingsPage() {
           </div>
         </Section>
 
-        <Section title="Backup and restore" description="Download your whole library with learning progress as a JSON file, or restore one. Restoring never deletes anything.">
+        <Section id="backup-restore" title="Backup and restore" description="Download your whole library with learning progress as a JSON file, or restore one. Restoring never deletes anything.">
           <div className="flex flex-wrap items-center gap-3">
             <button type="button" onClick={() => void handleExport()} disabled={isBusy} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60">Download backup</button>
             <button type="button" onClick={() => fileInput.current?.click()} disabled={isBusy} className="rounded-xl border border-slate-200 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60">Restore from file…</button>

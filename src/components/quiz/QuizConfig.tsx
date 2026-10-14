@@ -10,8 +10,10 @@ import {
   QuizFormat,
   QuizSource,
   SOURCE_LABELS,
+  WeaknessInfo,
   dedupeWords,
   minimumWords,
+  weaknessScore,
 } from '@/lib/quizBuilder';
 
 export interface QuizOptions {
@@ -36,6 +38,7 @@ interface QuizConfigProps {
   isLoading?: boolean;
   message?: string | null;
   history: QuizResult[];
+  weaknessInfo: WeaknessInfo;
   resume: { answered: number; total: number } | null;
   initialPrefs: QuizPrefs;
   onResume: () => void;
@@ -51,6 +54,7 @@ export function QuizConfig({
   isLoading = false,
   message,
   history,
+  weaknessInfo,
   resume,
   initialPrefs,
   onResume,
@@ -78,7 +82,7 @@ export function QuizConfig({
   const now = Date.now();
   const availableBySource: Record<QuizSource, number | null> = {
     random: scoped.length,
-    weak: null,
+    weak: scoped.filter((word) => weaknessScore(word, weaknessInfo) > 0.5).length,
     due: scoped.filter((word) => word.status !== 'new' && new Date(word.nextReviewAt).getTime() <= now).length,
     mastered: scoped.filter((word) => word.status === 'mastered').length,
   };
@@ -105,7 +109,8 @@ export function QuizConfig({
     });
 
   const recent = history.slice(0, 5);
-  const summaryLine = `${count === 0 ? 'All' : count} ${SOURCE_LABELS[source].toLowerCase()} · ${FORMAT_LABELS[format].split(' (')[0].toLowerCase()}`;
+  const requestedCount = count === 0 ? available : Math.min(count, available ?? count);
+  const summaryLine = `${requestedCount === 0 ? 'No' : requestedCount} ${SOURCE_LABELS[source].toLowerCase()} available · ${FORMAT_LABELS[format].split(' (')[0].toLowerCase()}`;
 
   return (
     <div className="mx-auto max-w-2xl space-y-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">

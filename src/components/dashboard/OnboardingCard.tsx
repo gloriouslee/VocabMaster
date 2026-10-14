@@ -73,6 +73,7 @@ export function OnboardingCard({ onAddStarterPack }: OnboardingCardProps) {
       </div>
 
       <p className="mt-4 flex items-center gap-1.5 text-xs text-slate-500"><Layers className="h-3.5 w-3.5" /> Tip: set your exam date and daily goal in Settings so the app can plan your days.</p>
+      <p className="text-xs text-slate-500">Already have a VocabMaster backup? <Link href="/settings#backup-restore" className="font-semibold text-blue-600 hover:underline">Restore it from Settings</Link>.</p>
       {error && <p role="alert" className="mt-3 text-sm text-rose-700">{error}</p>}
     </section>
   );

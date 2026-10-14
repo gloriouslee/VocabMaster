@@ -45,7 +45,8 @@ export function GlobalSearch() {
   const results = useMemo(() => {
     if (!query || !words) return [];
     return words
-      .filter((word) => word.word.toLocaleLowerCase().includes(query) || word.meaning.toLocaleLowerCase().includes(query))
+      .filter((word) => [word.word, word.meaning, word.phonetic, word.example, word.wordType, word.level]
+        .some((field) => field?.toLocaleLowerCase().includes(query)))
       .sort((a, b) => Number(b.word.toLocaleLowerCase().startsWith(query)) - Number(a.word.toLocaleLowerCase().startsWith(query)))
       .slice(0, MAX_RESULTS);
   }, [query, words]);

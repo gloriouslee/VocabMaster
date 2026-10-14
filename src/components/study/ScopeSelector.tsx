@@ -116,7 +116,7 @@ export function ScopeSelector({
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded-xl bg-amber-50 p-3"><p className="text-lg font-extrabold text-amber-900">{dueReviews}</p><p className="text-[11px] font-semibold uppercase text-amber-700">Due</p></div>
         <div className="rounded-xl bg-blue-50 p-3"><p className="text-lg font-extrabold text-blue-900">{newCount}</p><p className="text-[11px] font-semibold uppercase text-blue-700">New to learn</p></div>
-        <div className="rounded-xl bg-emerald-50 p-3"><p className="text-lg font-extrabold text-emerald-900">{vocabularies.filter((word) => word.status === 'mastered').length}</p><p className="text-[11px] font-semibold uppercase text-emerald-700">Mastered</p></div>
+        <div className="rounded-xl bg-emerald-50 p-3"><p className="text-lg font-extrabold text-emerald-900">{scoped.filter((word) => word.status === 'mastered').length}</p><p className="text-[11px] font-semibold uppercase text-emerald-700">Mastered</p></div>
       </div>
 
       {activity.reviewsToday > 0 && (

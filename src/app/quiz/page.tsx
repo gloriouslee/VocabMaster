@@ -57,6 +57,7 @@ export default function QuizPage() {
   const [vocabularies, setVocabularies] = useState<Vocabulary[]>([]);
   const [history, setHistory] = useState<QuizResult[]>([]);
   const [mistakes, setMistakes] = useState<MistakeLog[]>([]);
+  const [weaknessInfo, setWeaknessInfo] = useState<WeaknessInfo>({ lapses: new Map(), mistakes: new Map() });
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -92,12 +93,18 @@ export default function QuizPage() {
       StorageService.getVocabularies(),
       StorageService.getQuizResults().catch(() => [] as QuizResult[]),
       StorageService.getMistakeLogs().catch(() => [] as MistakeLog[]),
+      StorageService.getLapseCounts().catch(() => new Map<string, number>()),
     ])
-      .then(([nextFolders, words, results, mistakeLogs]) => {
+      .then(([nextFolders, words, results, mistakeLogs, lapses]) => {
         setFolders(nextFolders);
         setVocabularies(words);
         setHistory(results);
         setMistakes(mistakeLogs);
+        const mistakeCounts = new Map<string, number>();
+        for (const log of mistakeLogs) {
+          if (!log.resolved && log.vocabularyId) mistakeCounts.set(log.vocabularyId, (mistakeCounts.get(log.vocabularyId) || 0) + 1);
+        }
+        setWeaknessInfo({ lapses, mistakes: mistakeCounts });
         setSnapshot(readSnapshot(words));
       })
       .catch((error) => setLoadError(error instanceof Error ? error.message : 'Unable to load quiz data.'))
@@ -131,13 +138,9 @@ export default function QuizPage() {
       return;
     }
 
-    const info: WeaknessInfo = { lapses: new Map(), mistakes: new Map() };
-    if (options.source === 'weak') {
-      for (const log of mistakes) {
-        if (!log.resolved && log.vocabularyId) info.mistakes.set(log.vocabularyId, (info.mistakes.get(log.vocabularyId) || 0) + 1);
-      }
-      info.lapses = await StorageService.getLapseCounts(scope.map((word) => word.id)).catch(() => new Map<string, number>());
-    }
+    const info = options.source === 'weak'
+      ? weaknessInfo
+      : { lapses: new Map<string, number>(), mistakes: new Map<string, number>() };
 
     const generated = buildQuiz(scope, { count: options.count, source: options.source, format: options.format }, info);
     if (generated.length === 0) {
@@ -253,6 +256,7 @@ export default function QuizPage() {
             isLoading={isLoading}
             message={message}
             history={history}
+            weaknessInfo={weaknessInfo}
             resume={snapshot ? { answered: snapshot.answers.length, total: snapshot.questions.length } : null}
             initialPrefs={prefs}
             onResume={handleResume}
