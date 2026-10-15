@@ -65,6 +65,27 @@ export function isAnswerCorrect(question: QuizQuestion, selected: string): boole
     : selected === question.correctAnswer;
 }
 
+/** One insertion, deletion, or substitution away after normalization. */
+export function isNearSpelling(question: QuizQuestion, selected: string): boolean {
+  if (question.type !== 'typing') return false;
+  const first = normalizeWord(selected);
+  const second = normalizeWord(question.correctAnswer);
+  if (first === second || first.length < 4 || second.length < 4 || /\s/.test(first) || /\s/.test(second) || Math.abs(first.length - second.length) > 1) return false;
+  let left = 0;
+  let right = 0;
+  let edits = 0;
+  while (left < first.length && right < second.length) {
+    if (first[left] === second[right]) { left += 1; right += 1; continue; }
+    edits += 1;
+    if (edits > 1) return false;
+    if (first.length > second.length) left += 1;
+    else if (second.length > first.length) right += 1;
+    else { left += 1; right += 1; }
+  }
+  if (left < first.length || right < second.length) edits += 1;
+  return edits === 1;
+}
+
 export function dedupeWords(words: Vocabulary[]): Vocabulary[] {
   const seen = new Set<string>();
   return words.filter((word) => {

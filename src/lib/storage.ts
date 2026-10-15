@@ -127,6 +127,8 @@ function mapQuizResult(row: QuizResultRow, folderIds: string[] = []): QuizResult
     correctCount: row.correct_count,
     wrongCount: row.wrong_count,
     folderIds,
+    quizSource: row.quiz_source,
+    quizFormat: row.quiz_format,
   };
 }
 
@@ -532,6 +534,9 @@ export const StorageService = {
       p_total_questions: result.totalQuestions,
       p_correct_count: result.correctCount,
       p_wrong_count: result.wrongCount,
+      p_quiz_source: result.quizSource || 'random',
+      p_quiz_format: result.quizFormat || 'mixed',
+      p_apply_reviews: reviews.length > 0,
       p_folder_ids: result.folderIds || [],
       p_mistakes: mistakes.map((mistake) => ({
         vocabulary_id: mistake.vocabularyId,

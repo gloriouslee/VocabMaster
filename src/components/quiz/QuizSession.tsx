@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Volume2, CheckCircle2, XCircle, ArrowRight, LogOut, AlertTriangle } from 'lucide-react';
-import { QuizAnswer, QuizQuestion, TYPE_LABELS, isAnswerCorrect } from '@/lib/quizBuilder';
+import { QuizAnswer, QuizQuestion, TYPE_LABELS, isAnswerCorrect, isNearSpelling } from '@/lib/quizBuilder';
 import { speak as speakAloud } from '@/lib/speech';
 
 export type { QuizQuestion, QuizAnswer };
@@ -224,7 +224,7 @@ export function QuizSession({ questions, initialAnswers = [], onProgress, onComp
             <div className={`animate-fade-in space-y-2 rounded-2xl border p-4 text-sm ${isCorrect ? 'border-emerald-200 bg-emerald-50/60' : 'border-rose-200 bg-rose-50/60'}`}>
               <p className={`flex items-center gap-1.5 font-bold ${isCorrect ? 'text-emerald-800' : 'text-rose-800'}`}>
                 {isCorrect ? <CheckCircle2 className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
-                {isCorrect ? 'Correct!' : question.type === 'typing' ? `Not quite — the answer is “${question.correctAnswer}”` : 'Not quite'}
+                {isCorrect ? 'Correct!' : question.type === 'typing' && isNearSpelling(question, selected || '') ? `Almost — check the spelling: “${question.correctAnswer}”` : question.type === 'typing' ? `Not quite — the answer is “${question.correctAnswer}”` : 'Not quite'}
               </p>
               <div className="flex flex-wrap items-center gap-2 text-slate-800">
                 <span className="text-base font-extrabold">{question.vocab.word}</span>

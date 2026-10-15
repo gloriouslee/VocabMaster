@@ -60,6 +60,18 @@ export function VocabTable({
   useEffect(() => setSearchQuery(externalSearch), [externalSearch]);
   const [statusFilter, setStatusFilter] = useState<VocabStatus | 'due' | 'all'>('all');
   const folderMap = new Map(folders.map((folder) => [folder.id, folder.name]));
+  const folderPaths = new Map<string, string>();
+  for (const folder of folders) {
+    const ancestors: string[] = [];
+    const seen = new Set<string>();
+    let current: Folder | undefined = folder;
+    while (current && !seen.has(current.id)) {
+      seen.add(current.id);
+      ancestors.unshift(current.name);
+      current = current.parentId ? folders.find((candidate) => candidate.id === current?.parentId) : undefined;
+    }
+    folderPaths.set(folder.id, ancestors.join(' / '));
+  }
   const selectedFolderName = selectedFolderId ? folderMap.get(selectedFolderId) : null;
   const query = searchQuery.trim().toLocaleLowerCase();
   const folderScope = useMemo(
@@ -88,7 +100,7 @@ export function VocabTable({
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
 
-  useEffect(() => { setPage(0); }, [selectedFolderId, sortBy, statusFilter]);
+  useEffect(() => { setPage(0); }, [selectedFolderId, sortBy, statusFilter, query]);
   useEffect(() => { setPage((current) => Math.min(current, Math.max(0, Math.ceil(filtered.length / PAGE_SIZE) - 1))); }, [filtered.length]);
 
   const hasActiveFilters = Boolean(query || statusFilter !== 'all' || selectedFolderId);
@@ -268,7 +280,7 @@ export function VocabTable({
                     </td>
                     <td className="px-5 py-4">
                       {vocab.folderId && folderMap.get(vocab.folderId)
-                        ? <span title={folderMap.get(vocab.folderId)} className="inline-flex max-w-[190px] whitespace-normal break-words rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium leading-tight text-slate-600">{folderMap.get(vocab.folderId)}</span>
+                        ? <span title={folderPaths.get(vocab.folderId)} className="inline-flex max-w-[190px] whitespace-normal break-words rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium leading-tight text-slate-600">{folderPaths.get(vocab.folderId)}</span>
                         : <span className="text-xs text-slate-500">Uncategorized</span>}
                     </td>
                     <td className="px-5 py-4">{getStatusBadge(vocab.status)}<p className="mt-1 text-[11px] text-slate-500">{formatDue(vocab.nextReviewAt)}</p></td>
@@ -302,7 +314,7 @@ export function VocabTable({
                   <p className="text-sm font-medium leading-relaxed text-slate-800">{vocab.meaning}</p>
                   {vocab.example && <p className="mt-1 text-xs italic leading-relaxed text-slate-500">“{vocab.example}”</p>}
                   <div className="mt-3 flex items-center justify-between gap-2">
-                    <span title={vocab.folderId ? folderMap.get(vocab.folderId) : 'Uncategorized'} className="max-w-[65%] whitespace-normal break-words rounded-lg bg-slate-100 px-2.5 py-1 text-xs leading-tight text-slate-600">{vocab.folderId ? folderMap.get(vocab.folderId) || 'Uncategorized' : 'Uncategorized'}</span>
+                    <span title={vocab.folderId ? folderPaths.get(vocab.folderId) : 'Uncategorized'} className="max-w-[65%] whitespace-normal break-words rounded-lg bg-slate-100 px-2.5 py-1 text-xs leading-tight text-slate-600">{vocab.folderId ? folderPaths.get(vocab.folderId) || 'Uncategorized' : 'Uncategorized'}</span>
                     <div className="flex shrink-0 gap-1">
                       <button onClick={() => onEditWord(vocab)} aria-label={`Edit ${vocab.word}`} className="rounded-lg p-2 text-slate-500 hover:bg-blue-50 hover:text-blue-600"><Edit className="h-4 w-4" /></button>
                       <button onClick={() => onDeleteWord(vocab.id)} aria-label={`Delete ${vocab.word}`} className="rounded-lg p-2 text-slate-500 hover:bg-rose-50 hover:text-rose-600"><Trash2 className="h-4 w-4" /></button>

@@ -134,6 +134,8 @@ export type Database = {
           correct_count: number
           created_at: string
           id: string
+          quiz_format: string | null
+          quiz_source: string | null
           score_percent: number
           total_questions: number
           user_id: string
@@ -143,6 +145,8 @@ export type Database = {
           correct_count: number
           created_at?: string
           id?: string
+          quiz_format?: string | null
+          quiz_source?: string | null
           score_percent: number
           total_questions: number
           user_id: string
@@ -152,6 +156,8 @@ export type Database = {
           correct_count?: number
           created_at?: string
           id?: string
+          quiz_format?: string | null
+          quiz_source?: string | null
           score_percent?: number
           total_questions?: number
           user_id?: string
@@ -624,10 +630,13 @@ export type Database = {
       }
       record_quiz_attempt: {
         Args: {
+          p_apply_reviews: boolean
           p_correct_count: number
           p_folder_ids?: string[]
           p_mistakes?: Json
           p_reviews?: Json
+          p_quiz_format: string
+          p_quiz_source: string
           p_score_percent: number
           p_total_questions: number
           p_wrong_count: number
@@ -636,6 +645,8 @@ export type Database = {
           correct_count: number
           created_at: string
           id: string
+          quiz_format: string | null
+          quiz_source: string | null
           score_percent: number
           total_questions: number
           user_id: string

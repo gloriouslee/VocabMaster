@@ -22,7 +22,7 @@ import { persistSetting } from '@/lib/settings';
 
 const SESSION_KEY = 'vocabmaster.quizSession';
 const PREFS_KEY = 'vocabmaster.quizPrefs';
-const DEFAULT_PREFS: QuizPrefs = { count: 10, source: 'random', format: 'mixed' };
+const DEFAULT_PREFS: QuizPrefs = { count: 10, source: 'random', format: 'mixed', applyToSchedule: false };
 const SOURCES: QuizSource[] = ['random', 'weak', 'due', 'mastered'];
 const FORMATS: QuizFormat[] = ['mixed', 'mcq', 'reverse', 'cloze', 'typing', 'listening'];
 
@@ -31,6 +31,9 @@ interface QuizSnapshot {
   answers: Array<{ questionId: string; selectedAnswer: string; isCorrect: boolean }>;
   folderIds: string[];
   startedAt: number;
+  source?: QuizSource;
+  format?: QuizFormat;
+  applyToSchedule?: boolean;
 }
 
 const toSnapshotAnswers = (answers: QuizAnswer[]) =>
@@ -68,6 +71,7 @@ export default function QuizPage() {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [initialAnswers, setInitialAnswers] = useState<QuizAnswer[]>([]);
   const [folderIds, setFolderIds] = useState<string[]>([]);
+  const [quizSettings, setQuizSettings] = useState<Pick<QuizPrefs, 'source' | 'format' | 'applyToSchedule'>>(DEFAULT_PREFS);
   const [isPractice, setIsPractice] = useState(false);
   const [startedAt, setStartedAt] = useState(Date.now());
   const [snapshot, setSnapshot] = useState<QuizSnapshot | null>(null);
@@ -81,7 +85,7 @@ export default function QuizPage() {
     try {
       const saved = JSON.parse(window.localStorage.getItem(PREFS_KEY) || 'null');
       if (saved && SOURCES.includes(saved.source) && FORMATS.includes(saved.format) && typeof saved.count === 'number') {
-        setPrefs({ count: saved.count, source: saved.source, format: saved.format });
+        setPrefs({ count: saved.count, source: saved.source, format: saved.format, applyToSchedule: typeof saved.applyToSchedule === 'boolean' ? saved.applyToSchedule : false });
       }
     } catch {
       // Keep defaults when saved preferences cannot be read.
@@ -117,19 +121,21 @@ export default function QuizPage() {
     else window.localStorage.removeItem(SESSION_KEY);
   };
 
-  const beginSession = (nextQuestions: QuizQuestion[], answers: QuizAnswer[], practice: boolean, ids: string[], started: number) => {
+  const beginSession = (nextQuestions: QuizQuestion[], answers: QuizAnswer[], practice: boolean, ids: string[], started: number, settings: Pick<QuizPrefs, 'source' | 'format' | 'applyToSchedule'>) => {
     setQuestions(nextQuestions);
     setInitialAnswers(answers);
     setIsPractice(practice);
     setFolderIds(ids);
     setStartedAt(started);
+    setQuizSettings(settings);
     setStep('session');
   };
 
   const handleStartQuiz = async (options: QuizOptions) => {
     setMessage(null);
-    persistSetting('vocabmaster.quizPrefs', JSON.stringify({ count: options.count, source: options.source, format: options.format }));
-    setPrefs({ count: options.count, source: options.source, format: options.format });
+    persistSetting('vocabmaster.quizPrefs', JSON.stringify({ count: options.count, source: options.source, format: options.format, applyToSchedule: options.applyToSchedule }));
+    setPrefs({ count: options.count, source: options.source, format: options.format, applyToSchedule: options.applyToSchedule });
+    const settings = { source: options.source, format: options.format, applyToSchedule: options.applyToSchedule };
 
     const scopeSet = options.scopeFolderIds ? new Set(options.scopeFolderIds) : null;
     const scope = dedupeWords(vocabularies.filter((word) => !scopeSet || (word.folderId !== null && scopeSet.has(word.folderId))));
@@ -153,8 +159,8 @@ export default function QuizPage() {
     }
 
     const started = Date.now();
-    persistSnapshot({ questions: generated, answers: [], folderIds: options.folderIds, startedAt: started });
-    beginSession(generated, [], false, options.folderIds, started);
+    persistSnapshot({ questions: generated, answers: [], folderIds: options.folderIds, startedAt: started, ...settings });
+    beginSession(generated, [], false, options.folderIds, started, settings);
   };
 
   const handleResume = () => {
@@ -164,12 +170,17 @@ export default function QuizPage() {
       const question = byId.get(answer.questionId);
       return question ? [{ question, selectedAnswer: answer.selectedAnswer, isCorrect: answer.isCorrect }] : [];
     });
-    beginSession(snapshot.questions, answers, false, snapshot.folderIds, snapshot.startedAt);
+    beginSession(snapshot.questions, answers, false, snapshot.folderIds, snapshot.startedAt, {
+      source: snapshot.source || prefs.source,
+      format: snapshot.format || prefs.format,
+      // Before the explicit opt-in existed, quiz attempts always updated SRS.
+      applyToSchedule: snapshot.applyToSchedule ?? true,
+    });
   };
 
   const handleProgress = (answers: QuizAnswer[]) => {
     if (isPractice) return;
-    persistSnapshot({ questions, answers: toSnapshotAnswers(answers), folderIds, startedAt });
+    persistSnapshot({ questions, answers: toSnapshotAnswers(answers), folderIds, startedAt, ...quizSettings });
   };
 
   const handleExit = () => {
@@ -180,19 +191,25 @@ export default function QuizPage() {
     const correctCount = answers.filter((answer) => answer.isCorrect).length;
     const wrong = answers.filter((answer) => !answer.isCorrect);
     setElapsedMs(Date.now() - startedAt);
-    setPreviousScore(history[0]?.scorePercent ?? null);
+    const comparableHistory = history.find((result) =>
+      result.quizSource === quizSettings.source && result.quizFormat === quizSettings.format &&
+      result.totalQuestions === answers.length &&
+      [...(result.folderIds || [])].sort().join(',') === [...folderIds].sort().join(','));
+    setPreviousScore(comparableHistory?.scorePercent ?? null);
 
     if (!isPractice) {
-      const reviewOutcomes = [...new Map(answers.map((answer) => [
+      const reviewOutcomes = quizSettings.applyToSchedule ? [...new Map(answers.map((answer) => [
         answer.question.vocab.id,
         { vocabularyId: answer.question.vocab.id, rating: answer.isCorrect ? 'good' as const : 'forgot' as const },
-      ])).values()];
+      ])).values()] : [];
       const result = await StorageService.saveQuizResult({
         scorePercent: answers.length > 0 ? Math.round((correctCount / answers.length) * 100) : 0,
         totalQuestions: answers.length,
         correctCount,
         wrongCount: wrong.length,
         folderIds,
+        quizSource: quizSettings.source,
+        quizFormat: quizSettings.format,
       }, wrong.map((answer) => ({
         vocabularyId: answer.question.vocab.id,
         word: answer.question.vocab.word,
@@ -202,23 +219,29 @@ export default function QuizPage() {
       })), reviewOutcomes);
       persistSnapshot(null);
       setHistory((current) => [result, ...current]);
-      window.dispatchEvent(new Event('vocabmaster:study-activity-updated'));
+      if (quizSettings.applyToSchedule) window.dispatchEvent(new Event('vocabmaster:study-activity-updated'));
 
       // Answering a previously missed word correctly clears its open mistakes.
-      const correctIds = new Set(answers.filter((answer) => answer.isCorrect).map((answer) => answer.question.vocab.id));
-      const toResolve = mistakes.filter((log) => !log.resolved && log.vocabularyId && correctIds.has(log.vocabularyId));
-      if (toResolve.length > 0) {
-        void Promise.all(toResolve.map((log) => StorageService.resolveMistakeLog(log.id)))
-          .then(() => StorageService.getMistakeLogs())
-          .then(setMistakes)
-          .catch(() => undefined);
+      if (quizSettings.applyToSchedule) {
+        const correctIds = new Set(answers.filter((answer) => answer.isCorrect).map((answer) => answer.question.vocab.id));
+        const toResolve = mistakes.filter((log) => !log.resolved && log.vocabularyId && correctIds.has(log.vocabularyId));
+        if (toResolve.length > 0) {
+          void Promise.all(toResolve.map((log) => StorageService.resolveMistakeLog(log.id)))
+            .then(() => StorageService.getMistakeLogs())
+            .then(setMistakes)
+            .catch(() => undefined);
+        }
       }
 
-      try {
-        setVocabularies(await StorageService.getVocabularies());
-        setScheduleNote(`All ${reviewOutcomes.length} quiz words were added to your shared review history. Correct answers were scheduled as Good; missed answers as Forgot. They count toward today's study activity.`);
-      } catch {
-        setScheduleNote('Your quiz result and review schedule were saved. Reload the quiz to refresh the updated word list.');
+      if (quizSettings.applyToSchedule) {
+        try {
+          setVocabularies(await StorageService.getVocabularies());
+          setScheduleNote(`All ${reviewOutcomes.length} quiz words were added to your shared review history. Correct answers were scheduled as Good; missed answers as Forgot. They count toward today's study activity.`);
+        } catch {
+          setScheduleNote('Your quiz result and review schedule were saved. Reload the quiz to refresh the updated word list.');
+        }
+      } else {
+        setScheduleNote('Your score and mistakes were saved. Review schedules were not changed.');
       }
     } else {
       setScheduleNote(null);
@@ -234,7 +257,7 @@ export default function QuizPage() {
       id: `retry-${index}`,
       options: shuffle(answer.question.options),
     }));
-    beginSession(missed, [], true, folderIds, Date.now());
+    beginSession(missed, [], true, folderIds, Date.now(), quizSettings);
   };
 
   return (

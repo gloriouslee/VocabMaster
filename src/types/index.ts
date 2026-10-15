@@ -52,6 +52,8 @@ export interface QuizResult {
   correctCount: number;
   wrongCount: number;
   folderIds?: string[];
+  quizSource?: string | null;
+  quizFormat?: string | null;
 }
 
 export interface MistakeLog {

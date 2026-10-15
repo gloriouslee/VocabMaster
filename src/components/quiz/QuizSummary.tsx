@@ -109,17 +109,17 @@ export function QuizSummary({ userAnswers, folders, previousScore, elapsedMs, is
 
       {byTopic.length > 1 && (
         <div className="space-y-3 rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h3 className="border-b border-slate-100 pb-3 text-sm font-bold text-slate-900">Accuracy by topic</h3>
+          <h3 className="border-b border-slate-100 pb-3 text-sm font-bold text-slate-900">Accuracy by topic <span className="ml-1 font-normal text-slate-500">(small samples are only a hint)</span></h3>
           <ul className="space-y-2">
             {byTopic.map((group) => {
               const percent = Math.round((group.correct / group.total) * 100);
               return (
                 <li key={group.name} className="flex items-center gap-3 text-xs text-slate-600">
-                  <span className="w-32 shrink-0 truncate font-medium text-slate-800">{group.name}</span>
+                  <span className="w-32 shrink-0 truncate font-medium text-slate-800" title={group.name}>{group.name}</span>
                   <span className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100">
-                    <span className={`block h-2 rounded-full ${percent >= 80 ? 'bg-emerald-500' : percent >= 60 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${percent}%` }} />
+                    <span className={`block h-2 rounded-full ${group.total < 3 ? 'bg-slate-400' : percent >= 80 ? 'bg-emerald-500' : percent >= 60 ? 'bg-amber-500' : 'bg-rose-500'}`} style={{ width: `${percent}%` }} />
                   </span>
-                  <span className="w-20 shrink-0 text-right font-semibold">{group.correct}/{group.total} · {percent}%</span>
+                  <span className="w-24 shrink-0 text-right font-semibold">{group.correct}/{group.total} · {percent}%</span>
                 </li>
               );
             })}

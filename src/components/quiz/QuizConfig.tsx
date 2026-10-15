@@ -24,12 +24,14 @@ export interface QuizOptions {
   count: number;
   source: QuizSource;
   format: QuizFormat;
+  applyToSchedule: boolean;
 }
 
 export interface QuizPrefs {
   count: number;
   source: QuizSource;
   format: QuizFormat;
+  applyToSchedule: boolean;
 }
 
 interface QuizConfigProps {
@@ -66,6 +68,7 @@ export function QuizConfig({
   const [count, setCount] = useState(initialPrefs.count);
   const [source, setSource] = useState<QuizSource>(initialPrefs.source);
   const [format, setFormat] = useState<QuizFormat>(initialPrefs.format);
+  const [applyToSchedule, setApplyToSchedule] = useState(initialPrefs.applyToSchedule);
 
   const scopeIds = useMemo(() => {
     if (selectedFolderIds.length === 0) return null;
@@ -106,6 +109,7 @@ export function QuizConfig({
       count,
       source,
       format,
+      applyToSchedule,
     });
 
   const recent = history.slice(0, 5);
@@ -120,7 +124,7 @@ export function QuizConfig({
         </div>
         <h2 className="text-xl font-bold text-slate-900">Vocabulary quiz</h2>
         <p className="mx-auto max-w-md text-sm text-slate-500">
-          Test what you really remember. Wrong answers are rescheduled for review automatically.
+          Check what you remember. You choose whether this quiz changes your review schedule.
         </p>
       </div>
 
@@ -149,6 +153,10 @@ export function QuizConfig({
         <Play className="h-4 w-4 fill-white" />
         <span>{isLoading ? 'Loading vocabulary…' : 'Start quiz'}</span>
       </button>
+      <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+        <input type="checkbox" checked={applyToSchedule} onChange={(event) => setApplyToSchedule(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
+        <span><span className="font-semibold">Update my review schedule</span><span className="mt-0.5 block text-xs text-slate-500">Correct answers count as Good; missed answers count as Forgot. Turn this off for a knowledge check.</span></span>
+      </label>
       <p className="text-center text-xs text-slate-500">{summaryLine}{selectedFolderIds.length > 0 ? ` · ${selectedFolderIds.length} topic${selectedFolderIds.length === 1 ? '' : 's'}` : ' · whole library'}</p>
 
       {tooFewWords && (
