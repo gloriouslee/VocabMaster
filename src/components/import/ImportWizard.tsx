@@ -52,6 +52,7 @@ export function ImportWizard({
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
   const [sourceFileName, setSourceFileName] = useState('');
+  const [validationNotice, setValidationNotice] = useState<string | null>(null);
 
   const handleDownloadTemplate = (type: 'xlsx' | 'csv') => {
     const worksheet = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS]);
@@ -151,17 +152,18 @@ export function ImportWizard({
   const handleConfirm = async () => {
     const validRecords = records.filter((r) => r.status === 'valid');
     if (validRecords.length === 0) {
-      alert('No valid records to import.');
+      setValidationNotice('No valid records to import. Fix or remove invalid rows first.');
       return;
     }
 
     if (folderSelectionMode === 'new' && !newFolderName.trim()) {
-      alert('Please enter a name for the new folder.');
+      setValidationNotice('Please enter a name for the new folder.');
       return;
     }
 
     setSaving(true);
     setErrorMsg(null);
+    setValidationNotice(null);
     try {
       await onConfirmImport({
         records: validRecords,
@@ -604,6 +606,7 @@ export function ImportWizard({
           </div>
         </div>
       )}
+      {validationNotice && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{validationNotice}</p>}
     </div>
   );
 }

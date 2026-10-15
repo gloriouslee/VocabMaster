@@ -16,6 +16,7 @@ import { ExploreService, MyCollection, MySubscription } from '@/lib/explore';
 import { normalizeWord } from '@/lib/normalizeWord';
 import { countDueReviews } from '@/lib/dailyPlan';
 import { Folder, Vocabulary } from '@/types';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 
 /** Reads ?q= from the URL (set by the header search) and reports it to the page. */
 function SearchParamBridge({ onChange, onFolder }: { onChange: (query: string) => void; onFolder: (folderId: string) => void }) {
@@ -38,6 +39,9 @@ export default function LibraryPage() {
   const [myCollections, setMyCollections] = useState<MyCollection[]>([]);
   const [subscriptions, setSubscriptions] = useState<MySubscription[]>([]);
   const [sharingFolder, setSharingFolder] = useState<Folder | null>(null);
+  const [folderPendingDelete, setFolderPendingDelete] = useState<Folder | null>(null);
+  const [folderDeleteMessage, setFolderDeleteMessage] = useState('');
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingVocab, setEditingVocab] = useState<Vocabulary | null>(null);
@@ -115,7 +119,7 @@ export default function LibraryPage() {
       await StorageService.saveFolder({ name, parentId });
       await refreshData();
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Unable to create folder.');
+      setToast({ id: Date.now(), message: error instanceof Error ? error.message : 'Unable to create folder.' });
     }
   };
 
@@ -124,31 +128,38 @@ export default function LibraryPage() {
       await StorageService.renameFolder(id, newName);
       await refreshData();
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Unable to rename folder.');
+      setToast({ id: Date.now(), message: error instanceof Error ? error.message : 'Unable to rename folder.' });
     }
   };
 
   const handleDeleteFolder = async (id: string) => {
-    const scope = getFolderScopeIds(folders, id);
     const folder = folders.find((item) => item.id === id);
+    if (!folder) return;
+    const scope = getFolderScopeIds(folders, id);
     const subfolders = scope.size - 1;
     const wordCount = vocabularies.filter((word) => word.folderId && scope.has(word.folderId)).length;
-    const message = `Delete "${folder?.name ?? 'this folder'}"${subfolders > 0 ? ` and its ${subfolders} ${subfolders === 1 ? 'subfolder' : 'subfolders'}` : ''}?` +
-      (wordCount > 0 ? `\n\n${wordCount} ${wordCount === 1 ? 'word' : 'words'} will stay in your library as uncategorized.` : '');
-    if (confirm(message)) {
-      try {
-        await StorageService.deleteFolder(id);
-        const deletedFolderIds = new Set<string>();
-        const collectDescendants = (folderId: string) => {
-          deletedFolderIds.add(folderId);
-          folders.filter((folder) => folder.parentId === folderId).forEach((child) => collectDescendants(child.id));
-        };
-        collectDescendants(id);
-        if (selectedFolderId && deletedFolderIds.has(selectedFolderId)) setSelectedFolderId(null);
-        await refreshData();
-      } catch (error) {
-        alert(error instanceof Error ? error.message : 'Unable to delete folder.');
-      }
+    setFolderDeleteMessage(`Delete “${folder.name}”${subfolders > 0 ? ` and its ${subfolders} ${subfolders === 1 ? 'subfolder' : 'subfolders'}` : ''}?${wordCount > 0 ? `\n\n${wordCount} ${wordCount === 1 ? 'word' : 'words'} will stay in your library as uncategorized.` : ''}`);
+    setFolderPendingDelete(folder);
+  };
+
+  const confirmDeleteFolder = async () => {
+    if (!folderPendingDelete) return;
+    setConfirmBusy(true);
+    try {
+      await StorageService.deleteFolder(folderPendingDelete.id);
+      const deletedFolderIds = new Set<string>();
+      const collectDescendants = (folderId: string) => {
+        deletedFolderIds.add(folderId);
+        folders.filter((folder) => folder.parentId === folderId).forEach((child) => collectDescendants(child.id));
+      };
+      collectDescendants(folderPendingDelete.id);
+      if (selectedFolderId && deletedFolderIds.has(selectedFolderId)) setSelectedFolderId(null);
+      setFolderPendingDelete(null);
+      await refreshData();
+    } catch (error) {
+      setToast({ id: Date.now(), message: error instanceof Error ? error.message : 'Unable to delete folder.' });
+    } finally {
+      setConfirmBusy(false);
     }
   };
 
@@ -181,12 +192,12 @@ export default function LibraryPage() {
             await StorageService.addVocabulary({ ...word });
             await refreshData();
           } catch (error) {
-            alert(error instanceof Error ? error.message : 'Unable to restore the word.');
+            setToast({ id: Date.now(), message: error instanceof Error ? error.message : 'Unable to restore the word.' });
           }
         },
       });
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Unable to delete vocabulary.');
+      setToast({ id: Date.now(), message: error instanceof Error ? error.message : 'Unable to delete vocabulary.' });
     }
   };
 
@@ -315,6 +326,7 @@ export default function LibraryPage() {
             onChanged={() => void refreshData().catch(() => undefined)}
           />
         )}
+        {folderPendingDelete && <ConfirmDialog title="Delete folder?" message={folderDeleteMessage} confirmLabel="Delete folder" destructive busy={confirmBusy} onConfirm={() => void confirmDeleteFolder()} onCancel={() => setFolderPendingDelete(null)} />}
 
         {/* Add/Edit Modal */}
         <VocabModal

@@ -30,6 +30,7 @@ export function VocabModal({
   const [folderId, setFolderId] = useState<string | null>(null);
   const [status, setStatus] = useState<VocabStatus>('new');
   const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (initialData) {
@@ -60,6 +61,7 @@ export function VocabModal({
     if (!word.trim() || !meaning.trim()) return;
 
     setIsSaving(true);
+    setError(null);
     try {
       await onSave({
       word: word.trim(),
@@ -73,7 +75,7 @@ export function VocabModal({
       });
       onClose();
     } catch (error) {
-      alert(error instanceof Error ? error.message : 'Unable to save vocabulary.');
+      setError(error instanceof Error ? error.message : 'Unable to save vocabulary.');
     } finally {
       setIsSaving(false);
     }
@@ -95,6 +97,7 @@ export function VocabModal({
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          {error && <p role="alert" className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">{error}</p>}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block font-semibold text-slate-700 mb-1">

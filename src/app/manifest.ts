@@ -6,6 +6,7 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: 'VocabMaster',
     description: 'IELTS vocabulary with spaced repetition and active recall.',
     start_url: '/',
+    scope: '/',
     display: 'standalone',
     background_color: '#f8fafc',
     theme_color: '#2563eb',

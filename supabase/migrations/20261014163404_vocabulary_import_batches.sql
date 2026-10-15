@@ -135,11 +135,18 @@ begin
     raise exception 'Import batch not found' using errcode = 'P0002';
   end if;
   if v_batch.deleted_at is not null then
-    return jsonb_build_object('deleted', true, 'words_deleted', 0, 'folders_deleted', 0);
+    return jsonb_build_object('deleted', true, 'words_deleted', 0, 'words_preserved', 0, 'folders_deleted', 0);
   end if;
 
+  -- Imported words remain removable as a batch only while they have never
+  -- been edited or studied. Preserve learner progress and later edits.
   delete from public.vocabularies
-  where import_batch_id = v_batch.id and user_id = v_user_id;
+  where import_batch_id = v_batch.id
+    and user_id = v_user_id
+    and status = 'new'
+    and repetitions = 0
+    and last_reviewed_at is null
+    and updated_at = created_at;
   get diagnostics v_words_deleted = row_count;
 
   delete from public.folders folder
@@ -162,6 +169,10 @@ begin
   return jsonb_build_object(
     'deleted', true,
     'words_deleted', v_words_deleted,
+    'words_preserved', greatest(
+      (select count(*)::integer from public.vocabularies where import_batch_id = v_batch.id and user_id = v_user_id),
+      0
+    ),
     'folders_deleted', v_folders_deleted
   );
 end;

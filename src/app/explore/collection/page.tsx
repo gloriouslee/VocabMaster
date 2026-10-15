@@ -7,6 +7,7 @@ import { ArrowLeft, BookOpen, Check, Copy, Flag, Layers, Library, RefreshCw, Use
 import { Shell } from '@/components/layout/Shell';
 import { Avatar } from '@/components/layout/Avatar';
 import { ReportDialog } from '@/components/explore/ReportDialog';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 import { CollectionDetail, CollectionWord, ExploreService, collectionLink } from '@/lib/explore';
 
 const PREVIEW_WORDS = 20;
@@ -25,6 +26,7 @@ function CollectionView() {
   const [joined, setJoined] = useState<{ folderId: string; added: number; skipped: number } | null>(null);
   const [showReport, setShowReport] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [confirmUnsubscribe, setConfirmUnsubscribe] = useState(false);
 
   const load = useCallback(async () => {
     if (!id) {
@@ -65,11 +67,11 @@ function CollectionView() {
   });
 
   const unsubscribe = () => {
-    if (!confirm('Unsubscribe from this collection?\n\nThe words already in your library stay there with your progress.')) return;
     return run(async () => {
       await ExploreService.unsubscribe(id);
       setJoined(null);
       setNotice({ tone: 'ok', text: 'You unsubscribed. Your words and progress are kept.' });
+      setConfirmUnsubscribe(false);
     });
   };
 
@@ -128,7 +130,7 @@ function CollectionView() {
                     <RefreshCw className={`h-4 w-4 ${busy ? 'animate-spin' : ''}`} /> Sync new words
                   </button>
                 )}
-                <button type="button" onClick={() => void unsubscribe()} disabled={busy} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60">Unsubscribe</button>
+                <button type="button" onClick={() => setConfirmUnsubscribe(true)} disabled={busy} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-60">Unsubscribe</button>
               </>
             ) : (
               <button type="button" onClick={() => void subscribe()} disabled={busy} className="rounded-xl bg-blue-600 px-4 py-3 text-sm font-bold text-white shadow-sm hover:bg-blue-700 disabled:opacity-60">
@@ -195,6 +197,7 @@ function CollectionView() {
           }}
         />
       )}
+      {confirmUnsubscribe && <ConfirmDialog title="Unsubscribe from this collection?" message="The words already in your library stay there with your learning progress. You will stop receiving new words when the collection is updated." confirmLabel="Unsubscribe" destructive busy={busy} onConfirm={() => void unsubscribe()} onCancel={() => setConfirmUnsubscribe(false)} />}
     </div>
   );
 }

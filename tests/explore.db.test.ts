@@ -52,6 +52,7 @@ describe('Explore migration (real Postgres)', () => {
         await db.exec(`reset role`);
       }
     }
+
     const fails = async (user: string, sql: string, params: unknown[], pattern: RegExp) => {
       await assert.rejects(() => as(user, sql, params), pattern);
     };
@@ -189,5 +190,59 @@ describe('Explore migration (real Postgres)', () => {
     await db.exec(`set role anon`);
     await assert.rejects(() => db.query<any>(`select * from public.list_collections()`), /permission denied/);
     await db.exec(`reset role`);
+  }, 120_000);
+});
+
+describe('Vocabulary import migrations (real Postgres)', () => {
+  it('creates folders and words atomically and preserves edited or studied words', async () => {
+    const db = new PGlite();
+    await db.exec(`
+      create role anon nologin;
+      create role authenticated nologin;
+      create schema auth;
+      create table auth.users (id uuid primary key);
+      create function auth.uid() returns uuid language sql stable as
+        $$ select nullif(current_setting('request.jwt.claim.sub', true), '')::uuid $$;
+      grant usage on schema public, auth to anon, authenticated;
+      grant execute on function auth.uid() to anon, authenticated;
+      insert into auth.users values ('00000000-0000-0000-0000-00000000000a');
+    `);
+    for (const file of [
+      '20261008144108_vocabmaster_schema.sql',
+      '20261014163404_vocabulary_import_batches.sql',
+      '20261015090000_atomic_vocabulary_import.sql',
+    ]) await db.exec(readFileSync(dir + file, 'utf8'));
+
+    const user = '00000000-0000-0000-0000-00000000000a';
+    const asUser = async <T = any>(sql: string, params: unknown[] = []): Promise<T[]> => {
+      await db.exec(`set role authenticated; select set_config('request.jwt.claim.sub', '${user}', false)`);
+      try {
+        return (await db.query<T>(sql, params)).rows;
+      } finally {
+        await db.exec(`reset role`);
+      }
+    };
+
+    const folderId = '4c2f6a8e-1b3d-4f59-8a7c-2e6d0b1f9c43';
+    const rows = [
+      { folder_id: folderId, word: 'pristine', meaning: 'nguyen ven' },
+      { folder_id: folderId, word: 'edited', meaning: 'da sua' },
+      { folder_id: folderId, word: 'studied', meaning: 'da hoc' },
+    ];
+    try {
+      await asUser(`select public.create_vocabulary_import_batch('test.csv', $1::jsonb, $2::jsonb)`, [JSON.stringify(rows), JSON.stringify([{ id: folderId, name: 'Imported topic' }])]);
+    } catch (error) {
+      throw new Error(`Import RPC failed: ${(error as Error).message}`);
+    }
+    const [batch] = await asUser<{ id: string }>(`select id from public.vocabulary_import_batches where file_name = 'test.csv'`);
+    await asUser(`update public.vocabularies set meaning = 'updated' where word = 'edited'`);
+    await asUser(`update public.vocabularies set status = 'learning', repetitions = 1, last_reviewed_at = now() where word = 'studied'`);
+    const [deleted] = await asUser<{ result: { words_deleted: number; words_preserved: number } }>(`select public.delete_vocabulary_import_batch($1) as result`, [batch.id]);
+    assert.equal(deleted.result.words_deleted, 1);
+    assert.equal(deleted.result.words_preserved, 2);
+    assert.deepEqual((await asUser<{ word: string }>(`select word from public.vocabularies order by word`)).map((row) => row.word), ['edited', 'studied']);
+
+    await assert.rejects(() => asUser(`select public.create_vocabulary_import_batch('bad.csv', '[{"folder_id":"4c2f6a8e-1b3d-4f59-8a7c-2e6d0b1f9c99","word":"broken","meaning":"x"}]'::jsonb, '[]'::jsonb)`));
+    assert.equal((await asUser<{ count: number }>(`select count(*)::int as count from public.vocabulary_import_batches where file_name = 'bad.csv'`))[0].count, 0);
   }, 120_000);
 });

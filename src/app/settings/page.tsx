@@ -14,7 +14,7 @@ import {
   saveDailyPrefs,
 } from '@/lib/dailyPlan';
 import { ExamGoal, loadExamGoal, planForExam, saveExamGoal } from '@/lib/examGoal';
-import { createBackup, parseBackup } from '@/lib/backup';
+import { createBackup, parseBackup, previewBackupRestore } from '@/lib/backup';
 import { STARTER_PACK_SIZE } from '@/lib/starterPack';
 import {
   CHINESE_VARIANTS,
@@ -29,6 +29,8 @@ import {
 import { supabase } from '@/lib/supabase';
 import { MAX_NAME_LENGTH, Profile, profileFromUser, removeAvatar, updateDisplayName, uploadAvatar } from '@/lib/profile';
 import { Avatar } from '@/components/layout/Avatar';
+import { InstallAppCard } from '@/components/common/InstallAppCard';
+import type { Folder, Vocabulary } from '@/types';
 
 type Notice = { tone: 'ok' | 'error'; text: string } | null;
 
@@ -65,6 +67,9 @@ export default function SettingsPage() {
   const avatarInput = useRef<HTMLInputElement>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [nameDraft, setNameDraft] = useState('');
+  const [restorePreview, setRestorePreview] = useState<{ file: File; backup: ReturnType<typeof parseBackup>; foldersCreated: number; added: number; skipped: number } | null>(null);
+  const [currentFolders, setCurrentFolders] = useState<Folder[]>([]);
+  const [currentWords, setCurrentWords] = useState<Vocabulary[]>([]);
 
   const loadProfile = async () => {
     if (!supabase) return;
@@ -83,8 +88,12 @@ export default function SettingsPage() {
     setPrefs(loadDailyPrefs());
     setExam(loadExamGoal());
     setAccent(window.localStorage.getItem('vocabmaster.accent') === 'en-GB' ? 'en-GB' : 'en-US');
-    void StorageService.getVocabularies()
-      .then((words) => setNewWords(words.filter((word) => word.status === 'new').length))
+    void Promise.all([StorageService.getVocabularies(), StorageService.getFolders()])
+      .then(([words, folders]) => {
+        setCurrentWords(words);
+        setCurrentFolders(folders);
+        setNewWords(words.filter((word) => word.status === 'new').length);
+      })
       .catch(() => undefined);
   }, []);
 
@@ -159,9 +168,28 @@ export default function SettingsPage() {
     setIsBusy(true);
     try {
       const backup = parseBackup(await file.text());
-      if (!confirm(`Restore ${backup.vocabularies.length} words and ${backup.folders.length} folders from this backup?\n\nWords already in the same folder are skipped, nothing is deleted.`)) return;
-      const result = await StorageService.restoreBackup(backup);
+      const [words, folders] = await Promise.all([StorageService.getVocabularies(), StorageService.getFolders()]);
+      setCurrentWords(words);
+      setCurrentFolders(folders);
+      setRestorePreview({ file, backup, ...previewBackupRestore(backup, folders, words) });
+    } catch (error) {
+      say('backup', 'error', error instanceof Error ? error.message : 'Unable to restore this backup.');
+    } finally {
+      setIsBusy(false);
+      if (fileInput.current) fileInput.current.value = '';
+    }
+  };
+
+  const confirmRestore = async () => {
+    if (!restorePreview) return;
+    setIsBusy(true);
+    try {
+      const result = await StorageService.restoreBackup(restorePreview.backup);
       say('backup', 'ok', `Restored ${result.added} words (${result.skipped} already existed) and created ${result.foldersCreated} folders.`);
+      setRestorePreview(null);
+      const [words, folders] = await Promise.all([StorageService.getVocabularies(), StorageService.getFolders()]);
+      setCurrentWords(words);
+      setCurrentFolders(folders);
     } catch (error) {
       say('backup', 'error', error instanceof Error ? error.message : 'Unable to restore this backup.');
     } finally {
@@ -189,6 +217,8 @@ export default function SettingsPage() {
           <h1 className="text-2xl font-extrabold tracking-tight text-slate-900">Settings</h1>
           <p className="mt-1 text-xs text-slate-500">Your preferences are saved to your account and follow you across devices.</p>
         </div>
+
+        <InstallAppCard />
 
         <Section title="Profile" description="How you appear in the app. Your email stays private and is only used to sign in.">
           <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
@@ -346,6 +376,16 @@ export default function SettingsPage() {
             />
           </div>
           <NoticeText notice={noticeFor('backup')} />
+          {restorePreview && (
+            <div role="dialog" aria-modal="true" aria-labelledby="restore-title" className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+              <h3 id="restore-title" className="font-bold text-slate-900">Review this restore</h3>
+              <p className="mt-1 text-sm text-slate-700">{restorePreview.file.name}: add {restorePreview.added} words and create {restorePreview.foldersCreated} folders. {restorePreview.skipped} words will be skipped because they already exist in the matching folder. Nothing will be deleted.</p>
+              <div className="mt-3 flex gap-2">
+                <button type="button" onClick={() => void confirmRestore()} disabled={isBusy} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60">{isBusy ? 'Restoring…' : 'Restore backup'}</button>
+                <button type="button" onClick={() => { setRestorePreview(null); if (fileInput.current) fileInput.current.value = ''; }} disabled={isBusy} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Cancel</button>
+              </div>
+            </div>
+          )}
         </Section>
       </div>
     </Shell>

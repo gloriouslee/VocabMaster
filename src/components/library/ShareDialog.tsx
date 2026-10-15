@@ -16,6 +16,7 @@ import {
   parseTags,
   validateShareForm,
 } from '@/lib/explore';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 
 interface ShareDialogProps {
   folder: { id: string; name: string };
@@ -46,6 +47,7 @@ export function ShareDialog({ folder, wordCount, existing, onClose, onChanged }:
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<MyCollection | null>(null);
   const [copied, setCopied] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const isShared = existing !== null && existing.visibility !== 'private';
 
@@ -72,7 +74,6 @@ export function ShareDialog({ folder, wordCount, existing, onClose, onChanged }:
 
   const remove = async () => {
     if (!existing) return;
-    if (!confirm('Delete this shared collection?\n\nPeople who subscribed keep the words already in their library, but they will no longer receive updates. Your folder is not affected.')) return;
     setIsBusy(true);
     setError(null);
     try {
@@ -165,6 +166,7 @@ export function ShareDialog({ folder, wordCount, existing, onClose, onChanged }:
             {visibility !== 'private' && (
               <div className="space-y-2 rounded-xl bg-amber-50 p-3 text-xs text-amber-900">
                 <p>Your display name and profile photo will be visible to people who see this collection. Your email is never shown. Sharing needs at least {MIN_WORDS_TO_SHARE} words.</p>
+                <p>Subscribers receive words you add when they sync. Edits and removals are not propagated, so their existing copies and learning progress stay unchanged.</p>
                 <label className="flex cursor-pointer items-start gap-2 font-semibold">
                   <input type="checkbox" checked={acknowledged} onChange={(event) => setAcknowledged(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-amber-400 text-blue-600" />
                   I made these words myself or have the right to share them (not copied from a book or paid course).
@@ -176,7 +178,7 @@ export function ShareDialog({ folder, wordCount, existing, onClose, onChanged }:
 
             <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
               <div className="flex gap-2">
-                {existing && <button type="button" onClick={() => void remove()} disabled={isBusy} className="rounded-xl px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60">Delete collection</button>}
+                {existing && <button type="button" onClick={() => setConfirmDelete(true)} disabled={isBusy} className="rounded-xl px-3 py-2 text-xs font-semibold text-rose-600 hover:bg-rose-50 disabled:opacity-60">Delete collection</button>}
                 {isShared && <button type="button" onClick={(event) => void submit(event, 'private')} disabled={isBusy} className="rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:opacity-60">Stop sharing</button>}
               </div>
               <div className="flex gap-2">
@@ -189,6 +191,7 @@ export function ShareDialog({ folder, wordCount, existing, onClose, onChanged }:
           </form>
         )}
       </div>
+      {confirmDelete && <ConfirmDialog title="Delete shared collection?" message="People who subscribed keep the words already in their library, but they will no longer receive updates. Your folder is not affected." confirmLabel="Delete collection" destructive busy={isBusy} onConfirm={() => void remove()} onCancel={() => setConfirmDelete(false)} />}
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { supabase } from '@/lib/supabase';
-import type { Database, Tables, TablesInsert, TablesUpdate } from '@/types/database';
+import type { Database, Json, Tables, TablesInsert, TablesUpdate } from '@/types/database';
 import { Folder, Vocabulary, QuizResult, MistakeLog, UserStats, WordType, VocabularyImportBatch } from '@/types';
 import { Rating } from './spacedRepetition';
 import type { TodayActivity } from './dailyPlan';
@@ -272,7 +272,7 @@ export const StorageService = {
   async createVocabularyImportBatch(
     fileName: string,
     items: Array<Omit<Vocabulary, 'id' | 'createdAt' | 'status' | 'nextReviewAt' | 'intervalDays' | 'repetitions' | 'easeFactor'> & Partial<Vocabulary>>,
-    createdFolderIds: string[] = [],
+    createdFolders: Array<{ id: string; name: string }> = [],
   ): Promise<VocabularyImportBatch> {
     const userId = await currentUserId();
     const rows = items.map((item) => {
@@ -282,18 +282,19 @@ export const StorageService = {
     const { data, error } = await client().rpc('create_vocabulary_import_batch', {
       p_file_name: fileName,
       p_vocabulary_rows: rows as unknown as Database['public']['Functions']['create_vocabulary_import_batch']['Args']['p_vocabulary_rows'],
-      p_created_folder_ids: createdFolderIds,
+      p_created_folders: createdFolders as unknown as Json,
     });
     if (error) throw error;
     return mapImportBatch(data);
   },
 
-  async deleteVocabularyImportBatch(id: string): Promise<{ wordsDeleted: number; foldersDeleted: number }> {
+  async deleteVocabularyImportBatch(id: string): Promise<{ wordsDeleted: number; wordsPreserved: number; foldersDeleted: number }> {
     const { data, error } = await client().rpc('delete_vocabulary_import_batch', { p_batch_id: id });
     if (error) throw error;
-    const result = data as { words_deleted?: unknown; folders_deleted?: unknown };
+    const result = data as { words_deleted?: unknown; words_preserved?: unknown; folders_deleted?: unknown };
     return {
       wordsDeleted: typeof result.words_deleted === 'number' ? result.words_deleted : 0,
+      wordsPreserved: typeof result.words_preserved === 'number' ? result.words_preserved : 0,
       foldersDeleted: typeof result.folders_deleted === 'number' ? result.folders_deleted : 0,
     };
   },

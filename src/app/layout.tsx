@@ -5,6 +5,8 @@ export const metadata: Metadata = {
   title: 'VocabMaster | IELTS Spaced Repetition & Active Recall',
   description: 'VocabMaster helps IELTS learners acquire, retain, and actively use vocabulary with spaced repetition and active recall.',
   icons: { icon: '/icons/icon-192.png', apple: '/icons/icon-192.png' },
+  manifest: '/manifest.webmanifest',
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'VocabMaster' },
 };
 
 export const viewport: Viewport = {

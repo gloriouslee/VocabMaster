@@ -517,7 +517,7 @@ export type Database = {
     }
     Functions: {
       create_vocabulary_import_batch: {
-        Args: { p_file_name: string; p_vocabulary_rows: Json; p_created_folder_ids?: string[] }
+        Args: { p_file_name: string; p_vocabulary_rows: Json; p_created_folders?: Json }
         Returns: Database["public"]["Tables"]["vocabulary_import_batches"]["Row"]
       }
       delete_vocabulary_import_batch: {

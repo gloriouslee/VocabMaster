@@ -1,6 +1,10 @@
 import type { Folder, Vocabulary, VocabStatus, WordType } from '@/types';
+import { normalizeWord } from './normalizeWord';
 
 export const BACKUP_VERSION = 1;
+export const MAX_BACKUP_FILE_BYTES = 25 * 1024 * 1024;
+export const MAX_BACKUP_WORDS = 50_000;
+export const MAX_BACKUP_FOLDERS = 5_000;
 
 export interface BackupFolder {
   id: string;
@@ -62,8 +66,41 @@ export function createBackup(folders: Folder[], vocabularies: Vocabulary[], now 
 const isText = (value: unknown): value is string => typeof value === 'string';
 const isNumber = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value);
 
+export function previewBackupRestore(backup: Backup, currentFolders: Folder[], currentWords: Vocabulary[]) {
+  const idMap = new Map<string, string>();
+  const current = [...currentFolders];
+  let foldersCreated = 0;
+  for (const folder of orderFoldersParentFirst(backup.folders)) {
+    const parentId = folder.parentId ? idMap.get(folder.parentId) ?? null : null;
+    const existing = current.find((item) => item.parentId === parentId && item.name.toLocaleLowerCase() === folder.name.toLocaleLowerCase());
+    if (existing) {
+      idMap.set(folder.id, existing.id);
+    } else {
+      const syntheticId = `preview:${folder.id}`;
+      current.push({ id: syntheticId, name: folder.name, parentId, createdAt: '', updatedAt: '' });
+      idMap.set(folder.id, syntheticId);
+      foldersCreated += 1;
+    }
+  }
+  const keyOf = (word: string, folderId: string | null) => `${normalizeWord(word)}|${folderId ?? ''}`;
+  const known = new Set(currentWords.map((word) => keyOf(word.word, word.folderId)));
+  let added = 0;
+  for (const word of backup.vocabularies) {
+    const folderId = word.folderId ? idMap.get(word.folderId) ?? null : null;
+    const key = keyOf(word.word, folderId);
+    if (!known.has(key)) {
+      known.add(key);
+      added += 1;
+    }
+  }
+  return { foldersCreated, added, skipped: backup.vocabularies.length - added };
+}
+
 /** Parses and validates a backup file; throws a readable error if it is not a VocabMaster backup. */
 export function parseBackup(text: string): Backup {
+  if (new TextEncoder().encode(text).byteLength > MAX_BACKUP_FILE_BYTES) {
+    throw new Error('This backup is larger than 25 MB. Export a smaller library or split the backup before restoring.');
+  }
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -76,6 +113,9 @@ export function parseBackup(text: string): Backup {
   }
   if (typeof data.version !== 'number' || data.version > BACKUP_VERSION) {
     throw new Error('This backup was created by a newer version of VocabMaster.');
+  }
+  if (data.folders.length > MAX_BACKUP_FOLDERS || data.vocabularies.length > MAX_BACKUP_WORDS) {
+    throw new Error(`Backups can contain up to ${MAX_BACKUP_FOLDERS.toLocaleString()} folders and ${MAX_BACKUP_WORDS.toLocaleString()} words.`);
   }
 
   const folders: BackupFolder[] = data.folders.flatMap((folder) =>

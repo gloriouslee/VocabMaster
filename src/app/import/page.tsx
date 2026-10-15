@@ -16,6 +16,7 @@ export default function ImportPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [deletingBatchId, setDeletingBatchId] = useState<string | null>(null);
+  const [batchPendingDelete, setBatchPendingDelete] = useState<VocabularyImportBatch | null>(null);
 
   const refreshHistory = useCallback(async () => {
     setBatches(await StorageService.getVocabularyImportBatches());
@@ -36,65 +37,54 @@ export default function ImportPage() {
     const { records, targetFolderId, newFolderName, useFileFolders, sourceFileName } = payload;
     let finalFolderId = targetFolderId;
     const currentFolders = [...folders];
-    const createdFolderIds: string[] = [];
+    const createdFolders: Array<{ id: string; name: string }> = [];
 
-    try {
-      if (newFolderName) {
-        const created = await StorageService.saveFolder({ name: newFolderName, parentId: null });
-        finalFolderId = created.id;
-        currentFolders.push(created);
-        createdFolderIds.push(created.id);
-      }
+    if (newFolderName) {
+      finalFolderId = crypto.randomUUID();
+      createdFolders.push({ id: finalFolderId, name: newFolderName });
+    }
 
-      const folderNameToIdMap = new Map<string, string>();
-      currentFolders.forEach((folder) => folderNameToIdMap.set(folder.name.toLowerCase().trim(), folder.id));
+    const folderNameToIdMap = new Map<string, string>();
+    currentFolders.forEach((folder) => folderNameToIdMap.set(folder.name.toLowerCase().trim(), folder.id));
 
-      const toInsert = [];
-      for (const record of records) {
-        let assignedFolderId = finalFolderId;
-        if (useFileFolders && record.folderName?.trim()) {
-          const key = record.folderName.trim().toLowerCase();
-          if (folderNameToIdMap.has(key)) {
-            assignedFolderId = folderNameToIdMap.get(key)!;
-          } else {
-            const created = await StorageService.saveFolder({ name: record.folderName.trim(), parentId: null });
-            folderNameToIdMap.set(key, created.id);
-            currentFolders.push(created);
-            createdFolderIds.push(created.id);
-            assignedFolderId = created.id;
-          }
+    const toInsert = [];
+    for (const record of records) {
+      let assignedFolderId = finalFolderId;
+      if (useFileFolders && record.folderName?.trim()) {
+        const key = record.folderName.trim().toLowerCase();
+        if (folderNameToIdMap.has(key)) {
+          assignedFolderId = folderNameToIdMap.get(key)!;
+        } else {
+          const id = crypto.randomUUID();
+          folderNameToIdMap.set(key, id);
+          createdFolders.push({ id, name: record.folderName.trim() });
+          assignedFolderId = id;
         }
-        toInsert.push({
-          word: record.word,
-          meaning: record.meaning,
-          wordType: record.wordType as any,
-          phonetic: record.phonetic,
-          level: record.level || 'Band 7.0',
-          example: record.example,
-          folderId: assignedFolderId,
-        });
       }
+      toInsert.push({
+        word: record.word,
+        meaning: record.meaning,
+        wordType: record.wordType as any,
+        phonetic: record.phonetic,
+        level: record.level || 'Band 7.0',
+        example: record.example,
+        folderId: assignedFolderId,
+      });
+    }
 
-      const batch = await StorageService.createVocabularyImportBatch(sourceFileName, toInsert, createdFolderIds);
-      setFolders(currentFolders);
-      setBatches((current) => [batch, ...current]);
-      setNotice(`Imported ${batch.wordCount} words from “${batch.fileName}”. You can remove this batch from the history below.`);
-      try {
-        setExistingVocabularies(await StorageService.getVocabularies());
-      } catch {
-        // The batch is already saved; a later page reload will refresh the local duplicate list.
-      }
-    } catch (error) {
-      await Promise.all(createdFolderIds.reverse().map((id) => StorageService.deleteFolder(id).catch(() => undefined)));
-      throw error;
+    const batch = await StorageService.createVocabularyImportBatch(sourceFileName, toInsert, createdFolders);
+    setFolders(await StorageService.getFolders());
+    setBatches((current) => [batch, ...current]);
+    setNotice(`Imported ${batch.wordCount} words from “${batch.fileName}”. You can remove this batch from the history below.`);
+    try {
+      setExistingVocabularies(await StorageService.getVocabularies());
+    } catch {
+      // The batch is already saved; a later page reload will refresh the local duplicate list.
     }
   };
 
   const handleDeleteBatch = async (batch: VocabularyImportBatch) => {
-    const confirmed = window.confirm(
-      `Delete ${batch.wordCount} words imported from “${batch.fileName}”? Words will be removed from your library. Shared/existing folders will be kept.`,
-    );
-    if (!confirmed) return;
+    setBatchPendingDelete(null);
     setDeletingBatchId(batch.id);
     setHistoryError(null);
     setNotice(null);
@@ -103,7 +93,7 @@ export default function ImportPage() {
       await refreshHistory();
       setExistingVocabularies(await StorageService.getVocabularies());
       setFolders(await StorageService.getFolders());
-      setNotice(`Removed ${result.wordsDeleted} words and ${result.foldersDeleted} empty import-created folders.`);
+      setNotice(`Removed ${result.wordsDeleted} untouched words and ${result.foldersDeleted} empty import-created folders${result.wordsPreserved ? `; kept ${result.wordsPreserved} edited or studied words` : ''}.`);
     } catch (error) {
       setHistoryError(error instanceof Error ? error.message : 'Unable to delete this import batch.');
     } finally {
@@ -135,7 +125,7 @@ export default function ImportPage() {
                     <p className="mt-1 text-xs text-slate-500">{batch.wordCount} words · {new Date(batch.createdAt).toLocaleString()}</p>
                     {batch.deletedAt && <p className="mt-1 text-xs font-medium text-slate-400">Batch deleted</p>}
                   </div>
-                  {!batch.deletedAt && <button type="button" onClick={() => void handleDeleteBatch(batch)} disabled={deletingBatchId !== null} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50">
+                  {!batch.deletedAt && <button type="button" onClick={() => setBatchPendingDelete(batch)} disabled={deletingBatchId !== null} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-rose-200 px-3 py-2 text-sm font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-50">
                     {deletingBatchId === batch.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}Delete batch
                   </button>}
                 </li>
@@ -143,6 +133,20 @@ export default function ImportPage() {
             </ul>
           )}
         </section>
+        {batchPendingDelete && (
+          <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4" role="dialog" aria-modal="true" aria-labelledby="delete-import-title">
+            <div className="w-full max-w-md space-y-4 rounded-2xl bg-white p-6 shadow-2xl">
+              <div>
+                <h2 id="delete-import-title" className="text-base font-bold text-slate-900">Remove import batch?</h2>
+                <p className="mt-2 text-sm text-slate-600">“{batchPendingDelete.fileName}” has {batchPendingDelete.wordCount} imported words. Untouched words will be removed. Words you have studied or edited will stay in your library, and existing folders are kept.</p>
+              </div>
+              <div className="flex justify-end gap-2">
+                <button type="button" onClick={() => setBatchPendingDelete(null)} className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-semibold text-slate-700">Cancel</button>
+                <button type="button" onClick={() => void handleDeleteBatch(batchPendingDelete)} className="rounded-lg bg-rose-600 px-3 py-2 text-sm font-bold text-white hover:bg-rose-700">Remove untouched words</button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </Shell>
   );

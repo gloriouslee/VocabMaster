@@ -12,6 +12,7 @@ import { buildStudyQueue } from '@/lib/studyQueue';
 import { DEFAULT_DAILY_PREFS, DailyPrefs, TodayActivity, loadDailyPrefs, remainingNewToday, saveDailyPrefs } from '@/lib/dailyPlan';
 import { StudyMode } from '@/lib/cards';
 import { persistSetting } from '@/lib/settings';
+import { ConfirmDialog } from '@/components/common/ConfirmDialog';
 
 const PREFS_KEY = 'vocabmaster.studyPrefs';
 const STUDY_MODES: StudyMode[] = ['mixed', 'classic', 'reverse', 'cloze', 'typing'];
@@ -32,6 +33,8 @@ export default function StudyPage() {
   const [activity, setActivity] = useState<TodayActivity>({ reviewsToday: 0, newToday: 0 });
   const [prefsReady, setPrefsReady] = useState(false);
   const [practiceAhead, setPracticeAhead] = useState(false);
+  const [showSpreadConfirm, setShowSpreadConfirm] = useState(false);
+  const [spreadCount, setSpreadCount] = useState(0);
 
   useEffect(() => {
     try {
@@ -143,7 +146,19 @@ export default function StudyPage() {
     const keep = dailyPrefs.maxReviews > 0 ? dailyPrefs.maxReviews : 50;
     const toSpread = overdue.slice(keep);
     if (toSpread.length === 0) return;
-    if (!confirm(`Keep your ${keep} most overdue cards for today and move the other ${toSpread.length} over the next 7 days?`)) return;
+    setSpreadCount(toSpread.length);
+    setShowSpreadConfirm(true);
+  };
+
+  const confirmSpreadBacklog = async () => {
+    const now = Date.now();
+    const overdue = vocabularies
+      .filter((word) => word.status !== 'new' && new Date(word.nextReviewAt).getTime() <= now)
+      .sort((a, b) => new Date(a.nextReviewAt).getTime() - new Date(b.nextReviewAt).getTime());
+    const keep = dailyPrefs.maxReviews > 0 ? dailyPrefs.maxReviews : 50;
+    const toSpread = overdue.slice(keep);
+    setShowSpreadConfirm(false);
+    if (toSpread.length === 0) return;
     setIsStarting(true);
     try {
       await StorageService.spreadOverdue(toSpread.map((word) => word.id), 7);
@@ -223,6 +238,7 @@ export default function StudyPage() {
             onPauseSession={handlePauseSession}
           />
         )}
+        {showSpreadConfirm && <ConfirmDialog title="Spread overdue cards?" message={`Keep the ${dailyPrefs.maxReviews > 0 ? dailyPrefs.maxReviews : 50} most overdue cards for today and distribute ${spreadCount} others over the next 7 days?`} confirmLabel="Spread backlog" busy={isStarting} onConfirm={() => void confirmSpreadBacklog()} onCancel={() => setShowSpreadConfirm(false)} />}
       </div>
     </Shell>
   );
