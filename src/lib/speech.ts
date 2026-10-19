@@ -14,6 +14,16 @@ export const ACCENT_KEY = 'vocabmaster.accent' as const;
 export const CHINESE_VARIANT_KEY = 'vocabmaster.chineseVariant' as const;
 export const SPEECH_NOTICE_EVENT = 'vocabmaster:speech-notice';
 
+const VARIANT_TEST_TEXT: Record<ChineseVariant, string> = {
+  'zh-CN': '你好，欢迎使用单词大师。',
+  'zh-TW': '你好，歡迎使用單詞大師。',
+  'zh-HK': '你好，歡迎使用單詞大師。',
+};
+
+export function chineseTestText(variant: ChineseVariant): string {
+  return VARIANT_TEST_TEXT[variant];
+}
+
 export const CHINESE_VARIANTS: Array<{ value: ChineseVariant; label: string }> = [
   { value: 'zh-CN', label: 'Mandarin, Simplified (China)' },
   { value: 'zh-TW', label: 'Mandarin, Traditional (Taiwan)' },
@@ -68,18 +78,19 @@ const normalizeTag = (lang: string) => lang.replace(/_/g, '-').toLowerCase();
  */
 export function findVoice<T extends VoiceLike>(voices: readonly T[], lang: SpeechLang): T | undefined {
   const rank = (voice: T) => (voice.localService ? 0 : 1);
-  const sorted = [...voices].sort((a, b) => rank(a) - rank(b));
-
   const aliases = ALIASES[lang];
   for (const alias of aliases) {
-    const match = sorted.find((voice) => normalizeTag(voice.lang) === alias);
-    if (match) return match;
+    // Match the requested region/variant before applying local/network preference.
+    // A local Taiwan voice must not shadow an available China voice for zh-CN.
+    const matches = voices.filter((voice) => normalizeTag(voice.lang) === alias);
+    if (matches.length > 0) return matches.sort((a, b) => rank(a) - rank(b))[0];
   }
   const family = FAMILY_PREFIXES[lang];
-  return sorted.find((voice) => {
+  const familyMatches = voices.filter((voice) => {
     const tag = normalizeTag(voice.lang);
     return family.some((prefix) => tag === prefix || tag.startsWith(`${prefix}-`));
   });
+  return familyMatches.sort((a, b) => rank(a) - rank(b))[0];
 }
 
 export function languageForText(text: string, english: EnglishAccent, chinese: ChineseVariant): SpeechLang {
@@ -161,7 +172,9 @@ export async function speak(text: string, override?: SpeechLang): Promise<SpeakR
   const voices = await loadVoices();
   const voice = findVoice(voices, lang);
 
-  // English can still be spoken with the default voice, other languages need a matching one.
+  // Never speak Chinese with the browser's unrelated default voice. Some devices
+  // report an empty voice list even when speech synthesis itself is available; in
+  // that case keep the requested language on the utterance and let the OS resolve it.
   if (!voice && !lang.startsWith('en') && voices.length > 0) {
     notify(missingVoiceMessage(lang));
     return { status: 'no-voice', lang };

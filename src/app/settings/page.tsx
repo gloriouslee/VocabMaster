@@ -20,6 +20,7 @@ import {
   CHINESE_VARIANTS,
   CHINESE_VARIANT_KEY,
   ChineseVariant,
+  chineseTestText,
   loadVoices,
   missingVoiceMessage,
   readSpeechPreferences,
@@ -315,9 +316,9 @@ export default function SettingsPage() {
             </p>
             <div className="flex flex-wrap gap-2">
               <button type="button" onClick={() => void speak('Hello, welcome to VocabMaster.')} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">Test English voice</button>
-              <button type="button" onClick={() => void speak('你好，欢迎使用单词大师。')} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">Test Chinese voice</button>
+              <button type="button" onClick={() => void speak(chineseTestText(chinese))} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">Test selected Chinese voice</button>
             </div>
-            {voices !== null && voices.chinese === 0 && <p className="text-xs text-amber-800">{missingVoiceMessage('zh-CN')}</p>}
+            {voices !== null && voices.chinese === 0 && <p className="text-xs text-amber-800">{missingVoiceMessage(chinese)}</p>}
           </div>
         </Section>
 

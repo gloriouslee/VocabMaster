@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectLanguage, findVoice, languageForText, missingVoiceMessage, summariseVoices, type VoiceLike } from '@/lib/speech';
+import { chineseTestText, detectLanguage, findVoice, languageForText, missingVoiceMessage, summariseVoices, type VoiceLike } from '@/lib/speech';
 
 const voice = (lang: string, name = lang, localService = true): VoiceLike => ({ lang, name, localService });
 
@@ -25,6 +25,11 @@ describe('findVoice', () => {
     const voices = [voice('en-US'), voice('zh_TW'), voice('zh-CN', 'Mandarin')];
     expect(findVoice(voices, 'zh-CN')?.name).toBe('Mandarin');
     expect(findVoice(voices, 'zh-TW')?.lang).toBe('zh_TW');
+  });
+
+  it('does not let an installed fallback voice shadow an exact regional match', () => {
+    const voices = [voice('zh-TW', 'Local Taiwan', true), voice('zh-CN', 'Network China', false)];
+    expect(findVoice(voices, 'zh-CN')?.name).toBe('Network China');
   });
 
   it('understands Android and Apple style tags', () => {
@@ -55,6 +60,15 @@ describe('languageForText', () => {
     expect(languageForText('hello', 'en-GB', 'zh-TW')).toBe('en-GB');
     expect(languageForText('你好', 'en-GB', 'zh-TW')).toBe('zh-TW');
     expect(languageForText('こんにちは', 'en-US', 'zh-CN')).toBe('ja-JP');
+  });
+});
+
+describe('Chinese voice test phrase', () => {
+  it('uses script appropriate for the selected variant', () => {
+    expect(detectLanguage(chineseTestText('zh-CN'))).toBe('zh');
+    expect(chineseTestText('zh-CN')).toContain('欢迎');
+    expect(chineseTestText('zh-TW')).toContain('歡迎');
+    expect(chineseTestText('zh-HK')).toContain('歡迎');
   });
 });
 
