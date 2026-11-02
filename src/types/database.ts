@@ -203,6 +203,8 @@ export type Database = {
       study_sessions: {
         Row: {
           created_at: string
+          relearn_flags: boolean[]
+          practice_only: boolean
           current_index: number
           id: string
           rating_counts: Json
@@ -212,6 +214,8 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          relearn_flags?: boolean[]
+          practice_only?: boolean
           current_index?: number
           id?: string
           rating_counts?: Json
@@ -221,6 +225,8 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          relearn_flags?: boolean[]
+          practice_only?: boolean
           current_index?: number
           id?: string
           rating_counts?: Json
@@ -692,7 +698,7 @@ export type Database = {
         }
       }
       start_study_session: {
-        Args: { p_vocabulary_ids: string[] }
+        Args: { p_vocabulary_ids: string[]; p_practice_only?: boolean }
         Returns: Database["public"]["Tables"]["study_sessions"]["Row"]
         SetofOptions: {
           from: "study_sessions"
@@ -703,6 +709,7 @@ export type Database = {
       }
       record_study_session_review: {
         Args: {
+          p_expected_index?: number
           p_rating: Database["public"]["Enums"]["review_rating"]
           p_session_id: string
           p_vocabulary_id: string

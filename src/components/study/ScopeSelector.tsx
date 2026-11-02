@@ -116,7 +116,7 @@ export function ScopeSelector({
       <div className="grid grid-cols-3 gap-2 text-center">
         <div className="rounded-xl bg-amber-50 p-3"><p className="text-lg font-extrabold text-amber-900">{dueReviews}</p><p className="text-[11px] font-semibold uppercase text-amber-700">Due</p></div>
         <div className="rounded-xl bg-blue-50 p-3"><p className="text-lg font-extrabold text-blue-900">{newCount}</p><p className="text-[11px] font-semibold uppercase text-blue-700">New to learn</p></div>
-        <div className="rounded-xl bg-emerald-50 p-3"><p className="text-lg font-extrabold text-emerald-900">{scoped.filter((word) => word.status === 'mastered').length}</p><p className="text-[11px] font-semibold uppercase text-emerald-700">Mastered</p></div>
+        <div className="rounded-xl bg-emerald-50 p-3"><p className="text-lg font-extrabold text-emerald-900">{scoped.filter((word) => word.status === 'mastered').length}</p><p className="text-[11px] font-semibold uppercase text-emerald-700" title="Review interval of at least 21 days; other skills are not assessed">Long-term review</p></div>
       </div>
 
       {activity.reviewsToday > 0 && (
@@ -155,7 +155,7 @@ export function ScopeSelector({
         </p>
       )}
       {!isLoading && vocabularies.length > 0 && availableCount === 0 && !includeNotDue && (
-        <p className="text-center text-sm text-slate-500">Nothing is due in this scope. Open the options and turn on practice ahead to study anyway.</p>
+        <p className="text-center text-sm text-slate-500">Nothing is due in this scope. Open the options and turn on practice ahead to study without changing your review schedule.</p>
       )}
 
       <div className="border-t border-slate-100 pt-3">
@@ -202,7 +202,7 @@ export function ScopeSelector({
               <input type="checkbox" checked={includeNotDue} onChange={(event) => setIncludeNotDue(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-blue-600" />
               <span>
                 <span className="block text-sm font-bold text-slate-900">Practice ahead</span>
-                <span className="block text-xs text-slate-500">Include cards that are not due yet ({vocabularies.length} total). Ignores the review cap.</span>
+                <span className="block text-xs text-slate-500">Include cards that are not due yet ({vocabularies.length} total). Ignores the review cap. This entire session leaves review schedules unchanged.</span>
               </span>
             </label>
 

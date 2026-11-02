@@ -173,7 +173,7 @@ export default function DashboardPage() {
             color="rose"
           />
           <StatCard
-            title="Mastered Words"
+            title="Long-term Review"
             value={masteredWords}
             subtitle="Scheduled at longer intervals"
             icon={CheckCircle}

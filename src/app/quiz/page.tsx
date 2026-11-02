@@ -1,5 +1,7 @@
 'use client';
 
+import { quizReviewOutcomes } from '@/lib/quizBuilder';
+
 import React, { useState, useEffect } from 'react';
 import { Shell } from '@/components/layout/Shell';
 import { QuizConfig, QuizOptions, QuizPrefs } from '@/components/quiz/QuizConfig';
@@ -198,10 +200,7 @@ export default function QuizPage() {
     setPreviousScore(comparableHistory?.scorePercent ?? null);
 
     if (!isPractice) {
-      const reviewOutcomes = quizSettings.applyToSchedule ? [...new Map(answers.map((answer) => [
-        answer.question.vocab.id,
-        { vocabularyId: answer.question.vocab.id, rating: answer.isCorrect ? 'good' as const : 'forgot' as const },
-      ])).values()] : [];
+      const reviewOutcomes = quizSettings.applyToSchedule ? quizReviewOutcomes(answers) : [];
       const result = await StorageService.saveQuizResult({
         scorePercent: answers.length > 0 ? Math.round((correctCount / answers.length) * 100) : 0,
         totalQuestions: answers.length,
@@ -236,7 +235,7 @@ export default function QuizPage() {
       if (quizSettings.applyToSchedule) {
         try {
           setVocabularies(await StorageService.getVocabularies());
-          setScheduleNote(`All ${reviewOutcomes.length} quiz words were added to your shared review history. Correct answers were scheduled as Good; missed answers as Forgot. They count toward today's study activity.`);
+          setScheduleNote(`Schedule updates applied: missed answers return for review; correct typed answers advance only when due. Correct choice answers do not extend intervals.`);
         } catch {
           setScheduleNote('Your quiz result and review schedule were saved. Reload the quiz to refresh the updated word list.');
         }

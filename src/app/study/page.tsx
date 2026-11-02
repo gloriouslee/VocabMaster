@@ -76,7 +76,8 @@ export default function StudyPage() {
 
         const hasRemovedWords = sessionWords.some((word) => !word);
         const resumedSession = hasRemovedWords
-          ? await StorageService.resumeStudySession(savedSession.id, remainingWords.map((word) => word.id))
+          ? await StorageService.resumeStudySession(savedSession.id, remainingWords.map((word) => word.id),
+              savedSession.relearnFlags.slice(savedSession.currentIndex).filter((_, index) => Boolean(sessionWords[savedSession.currentIndex + index])))
           : savedSession;
 
         const resumedQueue = hasRemovedWords ? remainingWords : sessionWords as Vocabulary[];
@@ -88,10 +89,10 @@ export default function StudyPage() {
       .finally(() => setIsLoading(false));
   }, []);
 
-  const saveAndStart = (queue: Vocabulary[]) => {
+  const saveAndStart = (queue: Vocabulary[], practiceOnly: boolean) => {
     setIsStarting(true);
     void Promise.all([
-      StorageService.startStudySession(queue.map((word) => word.id)),
+      StorageService.startStudySession(queue.map((word) => word.id), practiceOnly),
       loadLapseCounts(queue.map((word) => word.id)),
     ])
       .then(([session]) => {
@@ -130,7 +131,7 @@ export default function StudyPage() {
       setMessage("You have reached today's new-word limit and nothing else is due. Raise the limit or turn on practice ahead.");
       return;
     }
-    saveAndStart(queue);
+    saveAndStart(queue, options.includeNotDue);
   };
 
   const handleChangePrefs = (next: DailyPrefs) => {
@@ -171,9 +172,9 @@ export default function StudyPage() {
     }
   };
 
-  const handleRecordRating = async (vocabId: string, rating: Rating) => {
+  const handleRecordRating = async (vocabId: string, rating: Rating, expectedIndex: number) => {
     if (!studySession) throw new Error('Your saved study session is unavailable. Please reload the page.');
-    const updatedSession = await StorageService.recordStudySessionReview(studySession.id, vocabId, rating);
+    const updatedSession = await StorageService.recordStudySessionReview(studySession.id, vocabId, rating, expectedIndex);
     setStudySession(updatedSession);
     return updatedSession;
   };
@@ -193,7 +194,7 @@ export default function StudyPage() {
     ]);
     setVocabularies(words);
     setActivity(todayActivity);
-    setPracticeAhead(true);
+    setPracticeAhead(false);
     setMessage(null);
   };
 

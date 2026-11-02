@@ -35,7 +35,7 @@ interface VocabTableProps {
 const statusLabels: Record<VocabStatus, string> = {
   new: 'New',
   learning: 'Learning',
-  mastered: 'Mastered',
+  mastered: 'Long-term review',
 };
 
 const PAGE_SIZE = 50;
@@ -195,7 +195,7 @@ export function VocabTable({
                 <option value="all">All statuses</option>
                 <option value="new">New</option>
                 <option value="learning">Learning</option>
-                <option value="mastered">Mastered</option>
+                <option value="mastered">Long-term review</option>
                 <option value="due">Due now</option>
               </select>
             </label>

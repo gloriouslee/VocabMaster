@@ -39,7 +39,7 @@ export const SOURCE_LABELS: Record<QuizSource, string> = {
   random: 'Random words',
   weak: 'My weak words',
   due: 'Words due for review',
-  mastered: 'Check mastered words',
+  mastered: 'Check long-term review words',
 };
 
 export const TYPE_LABELS: Record<QuizQuestionType, string> = {
@@ -224,4 +224,16 @@ export function buildQuiz(
 /** Minimum scope size: choice questions need three wrong options, typing does not. */
 export function minimumWords(format: QuizFormat): number {
   return format === 'typing' ? 1 : 4;
+}
+
+/** Recognition choices cannot demonstrate unaided recall; failures still flag a lapse. */
+export function quizReviewOutcomes(answers: QuizAnswer[]): { vocabularyId: string; rating: 'good' | 'forgot' }[] {
+  const outcomes = new Map<string, { vocabularyId: string; rating: 'good' | 'forgot' }>();
+  for (const answer of answers) {
+    if (answer.isCorrect && answer.question.type !== 'typing') continue;
+    const vocabularyId = answer.question.vocab.id;
+    if (outcomes.get(vocabularyId)?.rating === 'forgot') continue;
+    outcomes.set(vocabularyId, { vocabularyId, rating: answer.isCorrect ? 'good' : 'forgot' });
+  }
+  return [...outcomes.values()];
 }

@@ -22,7 +22,7 @@ interface FlashcardDeckProps {
   session: StudySession;
   mode: StudyMode;
   lapseCounts: Map<string, number>;
-  onRecordRating: (vocabId: string, rating: Rating) => Promise<StudySession>;
+  onRecordRating: (vocabId: string, rating: Rating, expectedIndex: number) => Promise<StudySession>;
   onFinishSession: (destination: 'dashboard' | 'more') => Promise<void>;
   onPauseSession: () => void;
 }
@@ -51,7 +51,7 @@ export function FlashcardDeck({
   onFinishSession,
   onPauseSession,
 }: FlashcardDeckProps) {
-  const [items, setItems] = useState<DeckItem[]>(() => vocabularies.map((vocab) => ({ vocab, relearn: false })));
+  const [items, setItems] = useState<DeckItem[]>(() => vocabularies.map((vocab, position) => ({ vocab, relearn: session.relearnFlags[position] || false })));
   const [index, setIndex] = useState(session.currentIndex);
   const [stats, setStats] = useState<RatingCounts>(session.ratingCounts);
   const [showAnswer, setShowAnswer] = useState(false);
@@ -62,9 +62,10 @@ export function FlashcardDeck({
   const [isFinishing, setIsFinishing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [accent, setAccent] = useState<Accent>('en-US');
-  const [writingEnabled, setWritingEnabled] = useState(false);
+  const [writingEnabled, setWritingEnabled] = useState<boolean | null>(null);
 
   const pendingRef = useRef<Pending | null>(null);
+  const savingRef = useRef<Promise<boolean> | null>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastSnapshotRef = useRef<Snapshot | null>(null);
   const startedAtRef = useRef(Date.now());
@@ -95,30 +96,37 @@ export function FlashcardDeck({
 
   /** Sends the held-back rating to the server. On failure the deck rewinds to that card. */
   const flushPending = useCallback(async (): Promise<boolean> => {
+    if (savingRef.current) return savingRef.current;
     clearTimer();
     const pending = pendingRef.current;
     if (!pending) return true;
     pendingRef.current = null;
-    try {
-      await onRecordRef.current(pending.vocabId, pending.rating);
-      setUndoable((value) => (lastSnapshotRef.current === pending.snapshot ? false : value));
-      return true;
-    } catch (flushError) {
-      setItems(pending.snapshot.items);
-      setIndex(pending.snapshot.index);
-      setStats(pending.snapshot.stats);
-      setShowAnswer(false);
-      setUndoable(false);
-      setError(`${flushError instanceof Error ? flushError.message : 'Unable to save review.'} Your last card was restored — try rating it again.`);
-      return false;
-    }
+    const saving = (async () => {
+      try {
+        await onRecordRef.current(pending.vocabId, pending.rating, pending.snapshot.index);
+        setUndoable((value) => (lastSnapshotRef.current === pending.snapshot ? false : value));
+        return true;
+      } catch (flushError) {
+        setItems(pending.snapshot.items);
+        setIndex(pending.snapshot.index);
+        setStats(pending.snapshot.stats);
+        setShowAnswer(false);
+        setUndoable(false);
+        setError(`${flushError instanceof Error ? flushError.message : 'Unable to save review.'} Your last card was restored — try rating it again.`);
+        return false;
+      }
+    })();
+    savingRef.current = saving;
+    const result = await saving;
+    savingRef.current = null;
+    return result;
   }, []);
 
   useEffect(() => () => {
     // Do not lose a rating that is still inside its undo window when leaving the page.
     if (timerRef.current) clearTimeout(timerRef.current);
     const pending = pendingRef.current;
-    if (pending) void onRecordRef.current(pending.vocabId, pending.rating).catch(() => undefined);
+    if (pending) void onRecordRef.current(pending.vocabId, pending.rating, pending.snapshot.index).catch(() => undefined);
   }, []);
 
   const resetCardState = () => {
@@ -143,11 +151,9 @@ export function FlashcardDeck({
       nextItems.splice(Math.min(nextItems.length, index + 1 + gap), 0, { vocab: current.vocab, relearn: true });
     }
 
-    if (!current.relearn) {
-      setStats({ ...stats, [rating]: stats[rating] + 1 });
-      pendingRef.current = { vocabId: current.vocab.id, rating, snapshot };
-      timerRef.current = setTimeout(() => void flushPending(), UNDO_WINDOW_MS);
-    }
+    if (!current.relearn) setStats({ ...stats, [rating]: stats[rating] + 1 });
+    pendingRef.current = { vocabId: current.vocab.id, rating, snapshot };
+    timerRef.current = setTimeout(() => void flushPending(), UNDO_WINDOW_MS);
     lastSnapshotRef.current = snapshot;
     setUndoable(true);
     setItems(nextItems);
@@ -162,9 +168,9 @@ export function FlashcardDeck({
 
   const handleUndo = () => {
     const snapshot = lastSnapshotRef.current;
-    if (!snapshot || !undoable || isBusy) return;
-    // Only possible while the rating is still held back (or was a local relearn rating).
-    if (!pendingRef.current && !items[index - 1]?.relearn) return;
+    if (!snapshot || !undoable || isBusy || savingRef.current) return;
+    // Only possible while the rating is still held back.
+    if (!pendingRef.current) return;
     clearTimer();
     pendingRef.current = null;
     lastSnapshotRef.current = null;
@@ -236,6 +242,9 @@ export function FlashcardDeck({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  // Wait for the saved writing preference before showing any word prompt.
+  if (writingEnabled === null) return <p role="status" className="text-sm text-slate-500">Loading study preferences…</p>;
+
   if (isFinished || items.length === 0) {
     const total = sumCounts(stats);
     const accuracy = total > 0 ? Math.round(((stats.good + stats.easy) / total) * 100) : 0;
@@ -285,13 +294,14 @@ export function FlashcardDeck({
   const lapses = lapseCounts.get(vocab.id) || 0;
   const intervals = previewIntervals(vocab);
   const remaining = items.slice(index);
-  const remainingNew = remaining.filter((item) => !item.relearn && item.vocab.repetitions === 0).length;
+  const remainingNew = remaining.filter((item) => !item.relearn && item.vocab.status === 'new').length;
   const remainingRelearn = remaining.filter((item) => item.relearn).length;
   const remainingReview = remaining.length - remainingNew - remainingRelearn;
   const progressPercent = Math.round((index / items.length) * 100);
   const suggested: Rating | null = typedResult === 'correct' ? 'good' : typedResult === 'wrong' ? 'forgot' : null;
 
   const subLabel = (rating: Rating) => {
+    if (session.practiceOnly) return rating === 'forgot' || rating === 'hard' ? 'Again soon' : 'Done';
     if (!relearn) return intervals[rating];
     return rating === 'forgot' || rating === 'hard' ? 'Again soon' : 'Done';
   };
@@ -307,6 +317,7 @@ export function FlashcardDeck({
 
   return (
     <div className="mx-auto max-w-xl space-y-4">
+      {session.practiceOnly && <p className="text-sm text-slate-600">Extra practice · your review schedule will not change.</p>}
       <div className="flex items-center justify-between gap-2">
         <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Card {index + 1} of {items.length}</span>
         <div className="flex items-center gap-1">
@@ -401,7 +412,7 @@ export function FlashcardDeck({
             <button type="button" onClick={reveal} className="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-6 py-3 text-sm font-bold text-white shadow-md shadow-blue-500/20 transition-all hover:-translate-y-0.5 hover:bg-blue-700">
               <Eye className="h-4 w-4" /> {cardMode === 'typing' ? 'I don’t know' : 'Show answer'} <kbd className="ml-1 rounded bg-white/20 px-1.5 text-[10px]">Space</kbd>
             </button>
-          ) : (
+          ) : showAnswer ? (
             <div className="animate-fade-in w-full space-y-3 border-t border-slate-100 pt-5">
               {typedResult && (
                 <p className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-bold ${typedResult === 'correct' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
@@ -433,7 +444,7 @@ export function FlashcardDeck({
                 </div>
               )}
             </div>
-          )}
+          ) : null}
         </div>
 
         <div className={`grid grid-cols-4 gap-2 border-t border-slate-100 bg-slate-50 p-3 transition-opacity ${showAnswer ? 'opacity-100' : 'pointer-events-none opacity-40'}`}>

@@ -155,7 +155,7 @@ export function QuizConfig({
       </button>
       <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
         <input type="checkbox" checked={applyToSchedule} onChange={(event) => setApplyToSchedule(event.target.checked)} className="mt-0.5 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" />
-        <span><span className="font-semibold">Update my review schedule</span><span className="mt-0.5 block text-xs text-slate-500">Correct answers count as Good; missed answers count as Forgot. Turn this off for a knowledge check.</span></span>
+        <span><span className="font-semibold">Update my review schedule</span><span className="mt-0.5 block text-xs text-slate-500">Correct typed answers count as Good when due; missed answers count as Forgot. Correct choice answers do not extend intervals. Turn this off for a knowledge check.</span></span>
       </label>
       <p className="text-center text-xs text-slate-500">{summaryLine}{selectedFolderIds.length > 0 ? ` · ${selectedFolderIds.length} topic${selectedFolderIds.length === 1 ? '' : 's'}` : ' · whole library'}</p>
 
@@ -171,7 +171,7 @@ export function QuizConfig({
           {source === 'due'
             ? 'Nothing is due in this scope right now.'
             : source === 'mastered'
-              ? 'No mastered words yet in this scope.'
+              ? 'No words have reached a review interval of 21 days yet in this scope.'
               : source === 'weak'
                 ? 'No words meet the weak-word criteria in this scope yet.'
                 : 'No words are available in this scope.'} Pick another word source.

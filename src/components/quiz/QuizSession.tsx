@@ -243,7 +243,7 @@ export function QuizSession({ questions, initialAnswers = [], onProgress, onComp
                 </p>
               )}
               {!isCorrect && question.vocab.status !== 'new' && (
-                <p className="text-xs text-slate-500">This word will come back in your next review session.</p>
+                <p className="text-xs text-slate-500">Review this word again. Its schedule changes only if schedule updates are enabled.</p>
               )}
             </div>
           )}

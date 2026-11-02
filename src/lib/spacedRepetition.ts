@@ -25,7 +25,7 @@ const roundEase = (value: number) => Math.round(value * 100) / 100;
 
 /**
  * SM-2 style scheduling. This must stay in sync with the `record_vocabulary_review`
- * SQL function (supabase/migrations/20261009000000_sm2_scheduling.sql), which is
+ * SQL function (supabase/migrations/20261102090000_persist_relearning.sql), which is
  * the source of truth; this copy powers the interval previews on the buttons.
  */
 export function scheduleReview(state: SchedulingState, rating: Rating): SchedulingState & { status: VocabStatus } {
@@ -46,10 +46,10 @@ export function scheduleReview(state: SchedulingState, rating: Rating): Scheduli
       nextEase = Math.max(MIN_EASE, easeFactor - 0.15);
       break;
     case 'good':
-      nextInterval = repetitions === 0 ? 1 : repetitions === 1 ? 3 : Math.max(intervalDays + 1, Math.round(intervalDays * easeFactor));
+      nextInterval = repetitions === 0 ? 1 : repetitions === 1 ? Math.max(3, intervalDays + 1) : Math.max(intervalDays + 1, Math.round(intervalDays * easeFactor));
       break;
     case 'easy':
-      nextInterval = repetitions === 0 ? 4 : repetitions === 1 ? 7 : Math.max(intervalDays + 1, Math.round(intervalDays * easeFactor * 1.3));
+      nextInterval = repetitions === 0 ? 4 : repetitions === 1 ? Math.max(7, intervalDays + 1) : Math.max(intervalDays + 1, Math.round(intervalDays * easeFactor * 1.3));
       nextEase = Math.min(MAX_EASE, easeFactor + 0.15);
       break;
   }

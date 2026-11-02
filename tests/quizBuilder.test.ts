@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildQuiz, dedupeWords, isAnswerCorrect, pickDistractors, selectTargets, weaknessScore, type WeaknessInfo } from '@/lib/quizBuilder';
+import { buildQuestion, quizReviewOutcomes, buildQuiz, dedupeWords, isAnswerCorrect, pickDistractors, selectTargets, weaknessScore, type WeaknessInfo } from '@/lib/quizBuilder';
 import { DAY_MS, makeWord } from './fixtures';
 
 const noInfo: WeaknessInfo = { lapses: new Map(), mistakes: new Map() };
@@ -71,4 +71,15 @@ describe('weak word selection', () => {
     expect(selectTargets([due, later], 'due', 0, noInfo).map((word) => word.id)).toEqual(['d']);
     expect(selectTargets([due, later], 'mastered', 0, noInfo).map((word) => word.id)).toEqual(['l']);
   });
+});
+
+it('only promotes typed recall and conservatively retains any failure per word', () => {
+  const choice = buildQuestion(pool[0], 'mcq', pool, 'choice');
+  const typing = buildQuestion(pool[0], 'typing', pool, 'typing');
+  expect(quizReviewOutcomes([{ question: choice, selectedAnswer: choice.correctAnswer, isCorrect: true }])).toEqual([]);
+  expect(quizReviewOutcomes([{ question: typing, selectedAnswer: typing.correctAnswer, isCorrect: true }])).toEqual([{ vocabularyId: pool[0].id, rating: 'good' }]);
+  expect(quizReviewOutcomes([
+    { question: choice, selectedAnswer: 'wrong', isCorrect: false },
+    { question: typing, selectedAnswer: typing.correctAnswer, isCorrect: true },
+  ])).toEqual([{ vocabularyId: pool[0].id, rating: 'forgot' }]);
 });

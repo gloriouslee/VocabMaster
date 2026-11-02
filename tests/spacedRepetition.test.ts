@@ -52,7 +52,7 @@ describe('previewIntervals', () => {
 });
 
 describe('SQL parity', () => {
-  const sql = readFileSync('supabase/migrations/20261009000000_sm2_scheduling.sql', 'utf8');
+  const sql = readFileSync('supabase/migrations/20261102090000_persist_relearning.sql', 'utf8');
 
   it('uses the same constants as the TypeScript scheduler', () => {
     for (const fragment of [
@@ -67,4 +67,10 @@ describe('SQL parity', () => {
       expect(sql).toContain(fragment);
     }
   });
+});
+
+it('does not shorten a successful second review after an Easy first review', () => {
+  const first = scheduleReview(fresh, 'easy');
+  expect(first.intervalDays).toBe(4);
+  expect(scheduleReview(first, 'good').intervalDays).toBe(5);
 });

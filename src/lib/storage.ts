@@ -22,6 +22,8 @@ export interface StudySession {
   id: string;
   vocabularyIds: string[];
   currentIndex: number;
+  relearnFlags: boolean[];
+  practiceOnly: boolean;
   ratingCounts: { forgot: number; hard: number; good: number; easy: number };
 }
 
@@ -43,6 +45,8 @@ function mapStudySession(row: StudySessionRow): StudySession {
     id: row.id,
     vocabularyIds: row.vocabulary_ids,
     currentIndex: row.current_index,
+    relearnFlags: row.relearn_flags,
+    practiceOnly: row.practice_only,
     ratingCounts: {
       forgot: count('forgot'),
       hard: count('hard'),
@@ -467,19 +471,20 @@ export const StorageService = {
     return data ? mapStudySession(data) : null;
   },
 
-  async startStudySession(vocabularyIds: string[]): Promise<StudySession> {
+  async startStudySession(vocabularyIds: string[], practiceOnly = false): Promise<StudySession> {
     const { data, error } = await client().rpc('start_study_session', {
       p_vocabulary_ids: vocabularyIds,
+      p_practice_only: practiceOnly,
     });
     if (error) throw error;
     return mapStudySession(data);
   },
 
-  async resumeStudySession(id: string, vocabularyIds: string[]): Promise<StudySession> {
+  async resumeStudySession(id: string, vocabularyIds: string[], relearnFlags: boolean[]): Promise<StudySession> {
     const userId = await currentUserId();
     const { data, error } = await client()
       .from('study_sessions')
-      .update({ vocabulary_ids: vocabularyIds, current_index: 0 })
+      .update({ vocabulary_ids: vocabularyIds, relearn_flags: relearnFlags, current_index: 0 })
       .eq('id', id)
       .eq('user_id', userId)
       .select('*')
@@ -488,9 +493,10 @@ export const StorageService = {
     return mapStudySession(data);
   },
 
-  async recordStudySessionReview(sessionId: string, vocabularyId: string, rating: Rating): Promise<StudySession> {
+  async recordStudySessionReview(sessionId: string, vocabularyId: string, rating: Rating, expectedIndex: number): Promise<StudySession> {
     const { data, error } = await client().rpc('record_study_session_review', {
       p_session_id: sessionId,
+      p_expected_index: expectedIndex,
       p_vocabulary_id: vocabularyId,
       p_rating: rating,
     });

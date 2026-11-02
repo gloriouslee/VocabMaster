@@ -52,3 +52,16 @@ Reports are stored in `collection_reports`; review them in the Supabase dashboar
 ## Tests
 
 `npm test` runs the unit tests and the database test; `npm run typecheck` runs TypeScript.
+
+## Study scheduling update (2026-11-02)
+
+Apply migration `20261102090000_persist_relearning.sql` before deploying the updated
+client. It adds persisted relearning flags and a practice-only session flag, and
+updates the study RPC signatures. Existing saved sessions are retained with their
+original queue; relearning steps that existed only in an old browser cannot be recovered.
+
+Forgot/Hard cards remain in the saved queue until Good/Easy. Completing a forgotten
+card schedules a one-day check without adding another daily review or multiplying
+the interval. Practice ahead never changes vocabulary schedules or daily review totals.
+Quiz choice successes do not extend schedules; typed successes advance only new or
+due words. Quiz failures still mark words for review when schedule updates are enabled.
