@@ -25,7 +25,7 @@ const roundEase = (value: number) => Math.round(value * 100) / 100;
 
 /**
  * SM-2 style scheduling. This must stay in sync with the `record_vocabulary_review`
- * SQL function (supabase/migrations/20261102090000_persist_relearning.sql), which is
+ * SQL function (supabase/migrations/20261103143035_persist_relearning.sql), which is
  * the source of truth; this copy powers the interval previews on the buttons.
  */
 export function scheduleReview(state: SchedulingState, rating: Rating): SchedulingState & { status: VocabStatus } {

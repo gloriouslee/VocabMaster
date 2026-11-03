@@ -21,7 +21,7 @@ it('persists relearning, schedules recovery once, isolates practice and rejects 
       '20261009000000_sm2_scheduling.sql',
       '20261014162648_quiz_reviews_share_study_schedule.sql',
       '20261015120000_quiz_schedule_opt_in_and_metadata.sql',
-      '20261102090000_persist_relearning.sql',
+      '20261103143035_persist_relearning.sql',
     ]) await db.exec(readFileSync(`supabase/migrations/${file}`, 'utf8'));
     const user = '00000000-0000-0000-0000-000000000001';
     await db.exec(`insert into auth.users values ('${user}'); set role authenticated;

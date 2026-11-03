@@ -55,7 +55,7 @@ Reports are stored in `collection_reports`; review them in the Supabase dashboar
 
 ## Study scheduling update (2026-11-02)
 
-Apply migration `20261102090000_persist_relearning.sql` before deploying the updated
+Apply migration `20261103143035_persist_relearning.sql` before deploying the updated
 client. It adds persisted relearning flags and a practice-only session flag, and
 updates the study RPC signatures. Existing saved sessions are retained with their
 original queue; relearning steps that existed only in an old browser cannot be recovered.

@@ -52,7 +52,7 @@ describe('previewIntervals', () => {
 });
 
 describe('SQL parity', () => {
-  const sql = readFileSync('supabase/migrations/20261102090000_persist_relearning.sql', 'utf8');
+  const sql = readFileSync('supabase/migrations/20261103143035_persist_relearning.sql', 'utf8');
 
   it('uses the same constants as the TypeScript scheduler', () => {
     for (const fragment of [
