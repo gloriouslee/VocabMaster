@@ -81,6 +81,15 @@ export default function SettingsPage() {
     setNameDraft((current) => current || next.name);
   };
 
+  /** Reloads words and folders so the exam plan and restore preview reflect the library right now. */
+  const refreshLibrary = async () => {
+    const [words, folders] = await Promise.all([StorageService.getVocabularies(), StorageService.getFolders()]);
+    setCurrentWords(words);
+    setCurrentFolders(folders);
+    setNewWords(words.filter((word) => word.status === 'new').length);
+    return { words, folders };
+  };
+
   useEffect(() => {
     void loadProfile();
     setChinese(readSpeechPreferences().chinese);
@@ -89,13 +98,7 @@ export default function SettingsPage() {
     setPrefs(loadDailyPrefs());
     setExam(loadExamGoal());
     setAccent(window.localStorage.getItem('vocabmaster.accent') === 'en-GB' ? 'en-GB' : 'en-US');
-    void Promise.all([StorageService.getVocabularies(), StorageService.getFolders()])
-      .then(([words, folders]) => {
-        setCurrentWords(words);
-        setCurrentFolders(folders);
-        setNewWords(words.filter((word) => word.status === 'new').length);
-      })
-      .catch(() => undefined);
+    void refreshLibrary().catch(() => say('backup', 'error', 'Your library could not be loaded, so the exam plan and restore preview may be out of date.'));
   }, []);
 
   const say = (section: string, tone: 'ok' | 'error', text: string) => setNotice({ section, value: { tone, text } });
@@ -169,9 +172,7 @@ export default function SettingsPage() {
     setIsBusy(true);
     try {
       const backup = parseBackup(await file.text());
-      const [words, folders] = await Promise.all([StorageService.getVocabularies(), StorageService.getFolders()]);
-      setCurrentWords(words);
-      setCurrentFolders(folders);
+      const { words, folders } = await refreshLibrary();
       setRestorePreview({ file, backup, ...previewBackupRestore(backup, folders, words) });
     } catch (error) {
       say('backup', 'error', error instanceof Error ? error.message : 'Unable to restore this backup.');
@@ -188,9 +189,7 @@ export default function SettingsPage() {
       const result = await StorageService.restoreBackup(restorePreview.backup);
       say('backup', 'ok', `Restored ${result.added} words (${result.skipped} already existed) and created ${result.foldersCreated} folders.`);
       setRestorePreview(null);
-      const [words, folders] = await Promise.all([StorageService.getVocabularies(), StorageService.getFolders()]);
-      setCurrentWords(words);
-      setCurrentFolders(folders);
+      await refreshLibrary();
     } catch (error) {
       say('backup', 'error', error instanceof Error ? error.message : 'Unable to restore this backup.');
     } finally {
@@ -203,6 +202,8 @@ export default function SettingsPage() {
     setIsBusy(true);
     try {
       const { added, skipped } = await StorageService.importStarterPack();
+      // The exam plan counts new words, so it needs the words that were just added.
+      await refreshLibrary();
       say('starter', 'ok', added > 0 ? `Added ${added} words${skipped > 0 ? ` (${skipped} were already in your library)` : ''}.` : 'All starter words are already in your library.');
     } catch (error) {
       say('starter', 'error', error instanceof Error ? error.message : 'Unable to add the starter words.');
@@ -378,14 +379,14 @@ export default function SettingsPage() {
           </div>
           <NoticeText notice={noticeFor('backup')} />
           {restorePreview && (
-            <div role="dialog" aria-modal="true" aria-labelledby="restore-title" className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+            <section aria-labelledby="restore-title" className="rounded-xl border border-blue-200 bg-blue-50 p-4">
               <h3 id="restore-title" className="font-bold text-slate-900">Review this restore</h3>
               <p className="mt-1 text-sm text-slate-700">{restorePreview.file.name}: add {restorePreview.added} words and create {restorePreview.foldersCreated} folders. {restorePreview.skipped} words will be skipped because they already exist in the matching folder. Nothing will be deleted.</p>
               <div className="mt-3 flex gap-2">
                 <button type="button" onClick={() => void confirmRestore()} disabled={isBusy} className="rounded-lg bg-blue-600 px-3 py-2 text-sm font-bold text-white disabled:opacity-60">{isBusy ? 'Restoring…' : 'Restore backup'}</button>
                 <button type="button" onClick={() => { setRestorePreview(null); if (fileInput.current) fileInput.current.value = ''; }} disabled={isBusy} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700">Cancel</button>
               </div>
-            </div>
+            </section>
           )}
         </Section>
       </div>

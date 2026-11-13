@@ -6,6 +6,7 @@ import { Folder, QuizResult, Vocabulary } from '@/types';
 import { getFolderScopeIds } from '@/lib/folderScope';
 import { FolderPicker } from '@/components/common/FolderPicker';
 import {
+  COUNT_OPTIONS,
   FORMAT_LABELS,
   QuizFormat,
   QuizSource,
@@ -43,12 +44,12 @@ interface QuizConfigProps {
   weaknessInfo: WeaknessInfo;
   resume: { answered: number; total: number } | null;
   initialPrefs: QuizPrefs;
+  /** Topics ticked last time, so a new quiz keeps the same scope. */
+  initialFolderIds?: string[];
   onResume: () => void;
   onDiscardResume: () => void;
   onStartQuiz: (options: QuizOptions) => void;
 }
-
-const COUNT_OPTIONS = [5, 10, 15, 20, 30, 0];
 
 export function QuizConfig({
   folders,
@@ -59,11 +60,12 @@ export function QuizConfig({
   weaknessInfo,
   resume,
   initialPrefs,
+  initialFolderIds = [],
   onResume,
   onDiscardResume,
   onStartQuiz,
 }: QuizConfigProps) {
-  const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
+  const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>(initialFolderIds);
   const [showOptions, setShowOptions] = useState(false);
   const [count, setCount] = useState(initialPrefs.count);
   const [source, setSource] = useState<QuizSource>(initialPrefs.source);
@@ -203,6 +205,7 @@ export function QuizConfig({
               <label className="space-y-1 text-xs font-semibold text-slate-600">
                 Number of questions
                 <select value={count} onChange={(event) => setCount(Number(event.target.value))} className="mt-1 block w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-normal text-slate-800">
+                  {!(COUNT_OPTIONS as readonly number[]).includes(count) && <option value={count}>{count} questions</option>}
                   {COUNT_OPTIONS.map((value) => (
                     <option key={value} value={value}>{value === 0 ? 'All matching words' : `${value} questions`}</option>
                   ))}

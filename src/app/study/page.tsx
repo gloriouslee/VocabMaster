@@ -13,6 +13,7 @@ import { DEFAULT_DAILY_PREFS, DailyPrefs, TodayActivity, loadDailyPrefs, remaini
 import { StudyMode } from '@/lib/cards';
 import { persistSetting } from '@/lib/settings';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { STUDY_ACTIVITY_EVENT } from '@/lib/events';
 
 const PREFS_KEY = 'vocabmaster.studyPrefs';
 const STUDY_MODES: StudyMode[] = ['mixed', 'classic', 'reverse', 'cloze', 'typing'];
@@ -183,6 +184,8 @@ export default function StudyPage() {
     if (studySession) await StorageService.deleteStudySession(studySession.id);
     setStudySession(null);
     setSessionQueue(null);
+    // The sidebar and header show today's counts and the streak; tell them this session changed them.
+    window.dispatchEvent(new Event(STUDY_ACTIVITY_EVENT));
     if (destination === 'dashboard') {
       router.push('/');
       return;

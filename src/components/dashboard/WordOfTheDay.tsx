@@ -15,8 +15,9 @@ export function WordOfTheDay({ vocabularies }: WordOfTheDayProps) {
 
   useEffect(() => {
     if (vocabularies.length > 0) {
-      const day = new Date().toISOString().slice(0, 10);
-      const dayNumber = Number(day.replace(/-/g, ''));
+      // Local calendar date, so the word changes at the learner's midnight rather than at UTC midnight.
+      const today = new Date();
+      const dayNumber = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
       setCurrentWord(vocabularies[dayNumber % vocabularies.length]);
     } else {
       setCurrentWord(null);
@@ -54,7 +55,9 @@ export function WordOfTheDay({ vocabularies }: WordOfTheDayProps) {
           </h3>
         </div>
         <button
+          type="button"
           onClick={handleShuffle}
+          aria-label="Show another word"
           className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
           title="Randomize word"
         >
@@ -69,7 +72,9 @@ export function WordOfTheDay({ vocabularies }: WordOfTheDayProps) {
             <span className="text-sm font-mono text-indigo-300">{currentWord.phonetic}</span>
           )}
           <button
+            type="button"
             onClick={() => handleSpeak(currentWord.word)}
+            aria-label={`Pronounce ${currentWord.word}`}
             className="p-1.5 text-slate-400 hover:text-indigo-300 rounded-full hover:bg-slate-800 transition-colors"
             title="Listen Pronunciation"
           >
@@ -78,7 +83,7 @@ export function WordOfTheDay({ vocabularies }: WordOfTheDayProps) {
         </div>
 
         <div className="inline-block px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-500/20 border border-indigo-500/30 text-indigo-300 capitalize">
-          {currentWord.wordType} • {currentWord.level || 'IELTS 7.0+'}
+          {currentWord.wordType}{currentWord.level ? ` • ${currentWord.level}` : ''}
         </div>
 
         <div className="pt-2 border-t border-slate-800">

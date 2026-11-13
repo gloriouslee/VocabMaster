@@ -36,6 +36,13 @@ interface ImportWizardProps {
 }
 
 const TEMPLATE_HEADERS = ['Word', 'Vietnamese Meaning', 'Word Type', 'Phonetic', 'Level', 'Example Sentence', 'Folder'];
+/** Two filled-in rows so the template shows what each column expects. */
+const TEMPLATE_ROWS = [
+  ['mitigate', 'giảm thiểu, làm dịu bớt', 'verb', '/ˈmɪt.ɪ.ɡeɪt/', 'Band 7.0', 'Governments must mitigate the effects of climate change.', 'Environment'],
+  ['resilient', 'kiên cường, có khả năng phục hồi', 'adjective', '/rɪˈzɪl.i.ənt/', 'Band 7.0', 'Coastal cities need resilient infrastructure.', 'Environment'],
+];
+/** Preview rows rendered at once; more appear on request so huge files stay responsive. */
+const PREVIEW_PAGE = 200;
 
 export function ImportWizard({
   existingVocabularies,
@@ -53,9 +60,16 @@ export function ImportWizard({
   const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
   const [sourceFileName, setSourceFileName] = useState('');
   const [validationNotice, setValidationNotice] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [visibleRows, setVisibleRows] = useState(PREVIEW_PAGE);
+
+  const chooseFolderMode = (mode: 'existing' | 'new' | 'file') => {
+    setFolderSelectionMode(mode);
+    setValidationNotice(null);
+  };
 
   const handleDownloadTemplate = (type: 'xlsx' | 'csv') => {
-    const worksheet = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS]);
+    const worksheet = XLSX.utils.aoa_to_sheet([TEMPLATE_HEADERS, ...TEMPLATE_ROWS]);
 
     if (type === 'xlsx') {
       const workbook = XLSX.utils.book_new();
@@ -77,15 +91,28 @@ export function ImportWizard({
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    // Clear the input so choosing the same file again (after fixing it) fires onChange.
+    e.target.value = '';
+    if (file) await parseFile(file);
+  };
 
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) await parseFile(file);
+  };
+
+  const parseFile = async (file: File) => {
     setLoading(true);
     setErrorMsg(null);
+    setValidationNotice(null);
 
     try {
       const parsed = await parseImportFile(file, existingVocabularies);
       setSourceFileName(file.name);
       setRecords(parsed);
+      setVisibleRows(PREVIEW_PAGE);
 
       const hasFileFolders = parsed.some((r) => Boolean(r.folderName));
       if (hasFileFolders) {
@@ -227,7 +254,12 @@ export function ImportWizard({
       {step === 'upload' ? (
         /* Step 1: Upload Container */
         <div className="space-y-6">
-          <div className="bg-white p-8 rounded-2xl border-2 border-dashed border-slate-300 hover:border-blue-500 transition-colors text-center space-y-4 shadow-sm">
+          <div
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={(e) => void handleDrop(e)}
+            className={`bg-white p-8 rounded-2xl border-2 border-dashed transition-colors text-center space-y-4 shadow-sm ${isDragging ? 'border-blue-500 bg-blue-50/50' : 'border-slate-300 hover:border-blue-500'}`}
+          >
             <div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
               <UploadCloud className="w-8 h-8" />
             </div>
@@ -237,7 +269,7 @@ export function ImportWizard({
                 Drag & Drop your vocabulary file here
               </h3>
               <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                Supports Excel (.xlsx) and CSV (.csv) files. Required fields: <strong>Word</strong>, <strong>Vietnamese Meaning</strong>, <strong>Word Type</strong>.
+                Supports Excel (.xlsx) and CSV (.csv) files. Required columns: <strong>Word</strong> and <strong>Vietnamese Meaning</strong>. Word type, phonetic, level, example and folder are optional.
               </p>
             </div>
 
@@ -260,7 +292,7 @@ export function ImportWizard({
             )}
 
             {errorMsg && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-medium max-w-md mx-auto">
+              <div role="alert" className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl font-medium max-w-md mx-auto">
                 {errorMsg}
               </div>
             )}
@@ -351,7 +383,7 @@ export function ImportWizard({
               <div className="flex flex-wrap items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => setFolderSelectionMode('existing')}
+                  onClick={() => chooseFolderMode('existing')}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
                     folderSelectionMode === 'existing'
                       ? 'bg-blue-600 text-white shadow-xs'
@@ -363,7 +395,7 @@ export function ImportWizard({
 
                 <button
                   type="button"
-                  onClick={() => setFolderSelectionMode('new')}
+                  onClick={() => chooseFolderMode('new')}
                   className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors flex items-center gap-1 ${
                     folderSelectionMode === 'new'
                       ? 'bg-blue-600 text-white shadow-xs'
@@ -377,7 +409,7 @@ export function ImportWizard({
                 {hasFileFolders && (
                   <button
                     type="button"
-                    onClick={() => setFolderSelectionMode('file')}
+                    onClick={() => chooseFolderMode('file')}
                     className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-colors ${
                       folderSelectionMode === 'file'
                         ? 'bg-indigo-600 text-white shadow-xs'
@@ -416,7 +448,7 @@ export function ImportWizard({
                   type="text"
                   placeholder="e.g. IELTS Writing Academic Task 2"
                   value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onChange={(e) => { setNewFolderName(e.target.value); setValidationNotice(null); }}
                   className="px-3.5 py-2 text-xs border border-blue-400 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 w-72 bg-white"
                 />
               </div>
@@ -434,6 +466,7 @@ export function ImportWizard({
             <div className="flex items-center space-x-2">
               {duplicateCount > 0 && (
                 <button
+                  type="button"
                   onClick={handleRemoveDuplicates}
                   className="px-3 py-1.5 bg-amber-100 hover:bg-amber-200 text-amber-800 font-semibold rounded-xl text-xs transition-colors"
                 >
@@ -442,6 +475,7 @@ export function ImportWizard({
               )}
               {invalidCount > 0 && (
                 <button
+                  type="button"
                   onClick={handleRemoveInvalid}
                   className="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 font-semibold rounded-xl text-xs transition-colors"
                 >
@@ -452,12 +486,14 @@ export function ImportWizard({
 
             <div className="flex items-center space-x-2">
               <button
-                onClick={() => setStep('upload')}
+                type="button"
+                onClick={() => { setStep('upload'); setErrorMsg(null); setValidationNotice(null); }}
                 className="px-3.5 py-1.5 border border-slate-300 hover:bg-slate-50 text-slate-700 font-semibold rounded-xl text-xs transition-colors"
               >
                 Re-upload File
               </button>
               <button
+                type="button"
                 onClick={handleConfirm}
                 disabled={validCount === 0 || saving}
                 className="inline-flex items-center space-x-1.5 px-5 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-semibold rounded-xl text-xs transition-colors shadow-sm"
@@ -467,6 +503,10 @@ export function ImportWizard({
               </button>
             </div>
           </div>
+          {/* Problems with the import are shown here, next to the Confirm button, so they are never out of view. */}
+          {(errorMsg || validationNotice) && (
+            <p role="alert" className={`rounded-xl border p-3 text-sm ${errorMsg ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-amber-200 bg-amber-50 text-amber-800'}`}>{errorMsg || validationNotice}</p>
+          )}
 
           {/* Preview Table */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
@@ -484,7 +524,7 @@ export function ImportWizard({
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-xs">
-                  {records.map((r) => {
+                  {records.slice(0, visibleRows).map((r) => {
                     const isEditing = editingRecordId === r.id;
 
                     return (
@@ -565,6 +605,7 @@ export function ImportWizard({
                               <option value="adverb">Adverb</option>
                               <option value="phrase">Phrase</option>
                               <option value="idiom">Idiom</option>
+                              <option value="other">Other</option>
                             </select>
                           ) : (
                             r.wordType
@@ -582,15 +623,20 @@ export function ImportWizard({
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end space-x-2">
                             <button
+                              type="button"
                               onClick={() =>
                                 setEditingRecordId(isEditing ? null : r.id)
                               }
-                              className="p-1 text-slate-400 hover:text-blue-600 rounded"
+                              aria-label={isEditing ? `Finish editing ${r.word || 'this row'}` : `Edit ${r.word || 'this row'}`}
+                              aria-pressed={isEditing}
+                              className={`p-1 rounded ${isEditing ? 'text-blue-600' : 'text-slate-400 hover:text-blue-600'}`}
                             >
                               <Edit className="w-3.5 h-3.5" />
                             </button>
                             <button
+                              type="button"
                               onClick={() => handleDeleteRecord(r.id)}
+                              aria-label={`Remove ${r.word || 'this row'} from the import`}
                               className="p-1 text-slate-400 hover:text-red-600 rounded"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -603,10 +649,14 @@ export function ImportWizard({
                 </tbody>
               </table>
             </div>
+            {records.length > visibleRows && (
+              <button type="button" onClick={() => setVisibleRows((value) => value + PREVIEW_PAGE)} className="w-full border-t border-slate-100 py-3 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                Show more rows ({records.length - visibleRows} left)
+              </button>
+            )}
           </div>
         </div>
       )}
-      {validationNotice && <p role="alert" className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">{validationNotice}</p>}
     </div>
   );
 }

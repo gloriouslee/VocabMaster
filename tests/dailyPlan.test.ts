@@ -30,8 +30,8 @@ describe('dueForecast and counts', () => {
   it('buckets reviews by local day and ignores new and far-off cards', () => {
     const forecast = dueForecast(words, 7, now);
     expect(forecast).toHaveLength(8);
-    expect(forecast[0]).toEqual({ label: 'Today', count: 2 });
-    expect(forecast[1]).toEqual({ label: 'Tomorrow', count: 1 });
+    expect(forecast[0]).toEqual({ label: 'Today', shortLabel: 'Today', count: 2 });
+    expect(forecast[1]).toEqual({ label: 'Tomorrow', shortLabel: 'Tmrw', count: 1 });
     expect(forecast[3].count).toBe(1);
     expect(forecast.reduce((sum, day) => sum + day.count, 0)).toBe(4);
   });

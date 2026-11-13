@@ -4,6 +4,12 @@ import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { GraduationCap, Mail, Lock, User, ArrowRight, CheckCircle2, ShieldCheck, BookOpen, Sparkles } from 'lucide-react';
 import { clearAuthTokensFromUrl, isSupabaseConfigured, supabase } from '@/lib/supabase';
+import { safeNextPath } from '@/lib/authRedirect';
+
+/** Where the shell asked us to send the learner after signing in (`?next=`), defaulting to the dashboard. */
+function nextFromUrl(): string {
+  return safeNextPath(new URLSearchParams(window.location.search).get('next'));
+}
 
 export default function AuthPage() {
   const router = useRouter();
@@ -20,13 +26,13 @@ export default function AuthPage() {
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session) {
         clearAuthTokensFromUrl();
-        router.replace('/');
+        router.replace(nextFromUrl());
       }
     });
     void supabase.auth.getSession().then(({ data }) => {
       if (data.session) {
         clearAuthTokensFromUrl();
-        router.replace('/');
+        router.replace(nextFromUrl());
       }
     });
     return () => listener.subscription.unsubscribe();
@@ -46,7 +52,7 @@ export default function AuthPage() {
       if (mode === 'signin') {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
-        router.replace('/');
+        router.replace(nextFromUrl());
         return;
       }
 
@@ -57,7 +63,7 @@ export default function AuthPage() {
       });
       if (error) throw error;
       if (data.session) {
-        router.replace('/');
+        router.replace(nextFromUrl());
       } else {
         setMessage('Check your email for the confirmation link, then sign in.');
       }
@@ -80,7 +86,8 @@ export default function AuthPage() {
     setIsLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: `${window.location.origin}/auth` },
+      // Keep the return destination through the Google round trip.
+      options: { redirectTo: `${window.location.origin}/auth${window.location.search}` },
     });
     if (error) {
       setIsLoading(false);
@@ -148,7 +155,7 @@ export default function AuthPage() {
 
           {/* Alert Message */}
           {message && (
-            <div className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center gap-2 animate-fade-in ${isError ? 'bg-rose-50 border border-rose-200 text-rose-800' : 'bg-emerald-50 border border-emerald-200 text-emerald-800'}`}>
+            <div role={isError ? 'alert' : 'status'} className={`p-3.5 rounded-2xl text-xs font-semibold flex items-center gap-2 animate-fade-in ${isError ? 'bg-rose-50 border border-rose-200 text-rose-800' : 'bg-emerald-50 border border-emerald-200 text-emerald-800'}`}>
               {!isError && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
               <span>{message}</span>
             </div>
@@ -195,11 +202,13 @@ export default function AuthPage() {
           <form onSubmit={handleSubmit} className="space-y-4 text-sm">
             {mode === 'signup' && (
               <div>
-                <label className="block font-bold text-slate-700 mb-1">Full Name</label>
+                <label htmlFor="auth-name" className="block font-bold text-slate-700 mb-1">Full Name</label>
                 <div className="relative">
                   <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
+                    id="auth-name"
                     type="text"
+                    autoComplete="name"
                     required
                     placeholder="Nguyen Van A"
                     value={name}
@@ -211,11 +220,13 @@ export default function AuthPage() {
             )}
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Email Address</label>
+              <label htmlFor="auth-email" className="block font-bold text-slate-700 mb-1">Email Address</label>
               <div className="relative">
                 <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="auth-email"
                   type="email"
+                  autoComplete="email"
                   required
                   placeholder="student@example.com"
                   value={email}
@@ -226,11 +237,14 @@ export default function AuthPage() {
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Password</label>
+              <label htmlFor="auth-password" className="block font-bold text-slate-700 mb-1">Password</label>
               <div className="relative">
                 <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="auth-password"
                   type="password"
+                  autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                  minLength={mode === 'signup' ? 6 : undefined}
                   required
                   placeholder="••••••••"
                   value={password}

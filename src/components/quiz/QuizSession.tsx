@@ -18,11 +18,16 @@ interface QuizSessionProps {
 
 
 export function QuizSession({ questions, initialAnswers = [], onProgress, onComplete, onExit }: QuizSessionProps) {
-  const [answers, setAnswers] = useState<QuizAnswer[]>(initialAnswers);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [typed, setTyped] = useState('');
+  // A saved quiz whose last question was already answered resumes on that question,
+  // shown in its answered state, so the learner can still open the results.
+  const resumedComplete = questions.length > 0 && initialAnswers.length >= questions.length;
+  const lastSaved = resumedComplete ? initialAnswers[questions.length - 1] : null;
+  const [answers, setAnswers] = useState<QuizAnswer[]>(resumedComplete ? initialAnswers.slice(0, questions.length - 1) : initialAnswers);
+  const [selected, setSelected] = useState<string | null>(lastSaved ? lastSaved.selectedAnswer : null);
+  const [typed, setTyped] = useState(lastSaved && lastSaved.question.type === 'typing' ? lastSaved.selectedAnswer : '');
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const pendingRef = useRef<QuizAnswer[] | null>(resumedComplete ? initialAnswers.slice(0, questions.length) : null);
 
   const currentIndex = answers.length;
   const question = questions[currentIndex];
@@ -45,8 +50,6 @@ export function QuizSession({ questions, initialAnswers = [], onProgress, onComp
     onProgress(next);
     pendingRef.current = next;
   };
-
-  const pendingRef = useRef<QuizAnswer[] | null>(null);
 
   const handleNext = async () => {
     const next = pendingRef.current;
@@ -91,7 +94,10 @@ export function QuizSession({ questions, initialAnswers = [], onProgress, onComp
         ? Number(event.key) - 1
         : ['a', 'b', 'c', 'd'].indexOf(event.key.toLowerCase());
       if (index >= 0 && state.question.options[index]) state.submitAnswer(state.question.options[index]);
-      else if (event.key.toLowerCase() === 'p') state.speak(state.question.audioText || state.question.vocab.word);
+      // Only read the prompt aloud when the word is not the answer being asked for.
+      else if (event.key.toLowerCase() === 'p' && (state.question.type === 'listening' || state.question.type === 'mcq')) {
+        state.speak(state.question.audioText || state.question.vocab.word);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
@@ -168,6 +174,7 @@ export function QuizSession({ questions, initialAnswers = [], onProgress, onComp
             className="flex gap-2"
           >
             <input
+              key={question.id}
               type="text"
               value={typed}
               onChange={(event) => setTyped(event.target.value)}

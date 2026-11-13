@@ -64,6 +64,8 @@ export function countDueReviews(words: Vocabulary[], now = Date.now()): number {
 
 export interface ForecastDay {
   label: string;
+  /** Short form of `label` for narrow screens. */
+  shortLabel: string;
   count: number;
 }
 
@@ -73,13 +75,18 @@ const startOfLocalDay = (date: Date) => new Date(date.getFullYear(), date.getMon
 export function dueForecast(words: Vocabulary[], days = 7, now = new Date()): ForecastDay[] {
   const today = startOfLocalDay(now).getTime();
   const dayMs = 24 * 60 * 60 * 1000;
-  const buckets = Array.from({ length: days + 1 }, (_, offset) => ({
-    label: offset === 0 ? 'Today' : offset === 1 ? 'Tomorrow' : new Date(today + offset * dayMs).toLocaleDateString('en-US', { weekday: 'short' }),
-    count: 0,
-  }));
+  const buckets = Array.from({ length: days + 1 }, (_, offset) => {
+    const weekday = new Date(today + offset * dayMs).toLocaleDateString('en-US', { weekday: 'short' });
+    return {
+      label: offset === 0 ? 'Today' : offset === 1 ? 'Tomorrow' : weekday,
+      shortLabel: offset === 0 ? 'Today' : offset === 1 ? 'Tmrw' : weekday,
+      count: 0,
+    };
+  });
   for (const word of words) {
     if (!isReview(word)) continue;
-    const offset = Math.floor((startOfLocalDay(new Date(word.nextReviewAt)).getTime() - today) / dayMs);
+    // Rounded, so a 23-hour day at a daylight-saving change still counts as one whole day.
+    const offset = Math.round((startOfLocalDay(new Date(word.nextReviewAt)).getTime() - today) / dayMs);
     if (offset <= 0) buckets[0].count += 1;
     else if (offset <= days) buckets[offset].count += 1;
   }

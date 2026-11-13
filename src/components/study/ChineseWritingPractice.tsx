@@ -29,13 +29,14 @@ export function ChineseWritingPractice({ word, onRevealAnswer }: ChineseWritingP
 
     let cancelled = false;
     let writer: { cancelQuiz: () => void } | null = null;
+    const target = targetRef.current;
     setIsLoading(true);
     setHasLoadError(false);
 
     void import('hanzi-writer').then(({ default: HanziWriter }) => {
-      if (cancelled || !targetRef.current) return;
-      targetRef.current.replaceChildren();
-      const instance = HanziWriter.create(targetRef.current, characters[characterIndex], {
+      if (cancelled || !target) return;
+      target.replaceChildren();
+      const instance = HanziWriter.create(target, characters[characterIndex], {
         width: 240,
         height: 240,
         padding: 12,
@@ -70,7 +71,7 @@ export function ChineseWritingPractice({ word, onRevealAnswer }: ChineseWritingP
       cancelled = true;
       writer?.cancelQuiz();
       if (writerRef.current === writer) writerRef.current = null;
-      targetRef.current?.replaceChildren();
+      target?.replaceChildren();
     };
   }, [characterIndex, characters]);
 

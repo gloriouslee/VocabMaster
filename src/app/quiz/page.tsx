@@ -1,8 +1,6 @@
 'use client';
 
-import { quizReviewOutcomes } from '@/lib/quizBuilder';
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Shell } from '@/components/layout/Shell';
 import { QuizConfig, QuizOptions, QuizPrefs } from '@/components/quiz/QuizConfig';
 import { QuizSession } from '@/components/quiz/QuizSession';
@@ -18,9 +16,11 @@ import {
   buildQuiz,
   dedupeWords,
   minimumWords,
+  quizReviewOutcomes,
 } from '@/lib/quizBuilder';
 import { shuffle } from '@/lib/shuffle';
 import { persistSetting } from '@/lib/settings';
+import { STUDY_ACTIVITY_EVENT } from '@/lib/events';
 
 const SESSION_KEY = 'vocabmaster.quizSession';
 const PREFS_KEY = 'vocabmaster.quizPrefs';
@@ -28,11 +28,15 @@ const DEFAULT_PREFS: QuizPrefs = { count: 10, source: 'random', format: 'mixed',
 const SOURCES: QuizSource[] = ['random', 'weak', 'due', 'mastered'];
 const FORMATS: QuizFormat[] = ['mixed', 'mcq', 'reverse', 'cloze', 'typing', 'listening'];
 
+type QuizSettings = Pick<QuizPrefs, 'source' | 'format' | 'applyToSchedule'>;
+
 interface QuizSnapshot {
   questions: QuizQuestion[];
   answers: Array<{ questionId: string; selectedAnswer: string; isCorrect: boolean }>;
   folderIds: string[];
   startedAt: number;
+  /** Time already spent answering when the quiz was last saved, so breaks are not counted. */
+  elapsedMs?: number;
   source?: QuizSource;
   format?: QuizFormat;
   applyToSchedule?: boolean;
@@ -50,11 +54,21 @@ function readSnapshot(words: Vocabulary[]): QuizSnapshot | null {
     const questions = saved.questions.filter((question) => existing.has(question.vocab.id));
     const keptIds = new Set(questions.map((question) => question.id));
     const answers = saved.answers.filter((answer) => keptIds.has(answer.questionId));
-    if (questions.length === 0 || answers.length >= questions.length) return null;
+    // A quiz whose last question was answered is kept so its results can still be viewed.
+    if (questions.length === 0 || answers.length > questions.length) return null;
     return { ...saved, questions, answers };
   } catch {
     return null;
   }
+}
+
+/** Unresolved quiz mistakes per word, which feed the weak-word ranking. */
+function countMistakes(logs: MistakeLog[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const log of logs) {
+    if (!log.resolved && log.vocabularyId) counts.set(log.vocabularyId, (counts.get(log.vocabularyId) || 0) + 1);
+  }
+  return counts;
 }
 
 export default function QuizPage() {
@@ -62,7 +76,7 @@ export default function QuizPage() {
   const [vocabularies, setVocabularies] = useState<Vocabulary[]>([]);
   const [history, setHistory] = useState<QuizResult[]>([]);
   const [mistakes, setMistakes] = useState<MistakeLog[]>([]);
-  const [weaknessInfo, setWeaknessInfo] = useState<WeaknessInfo>({ lapses: new Map(), mistakes: new Map() });
+  const [lapses, setLapses] = useState<Map<string, number>>(new Map());
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -73,15 +87,20 @@ export default function QuizPage() {
   const [questions, setQuestions] = useState<QuizQuestion[]>([]);
   const [initialAnswers, setInitialAnswers] = useState<QuizAnswer[]>([]);
   const [folderIds, setFolderIds] = useState<string[]>([]);
-  const [quizSettings, setQuizSettings] = useState<Pick<QuizPrefs, 'source' | 'format' | 'applyToSchedule'>>(DEFAULT_PREFS);
+  const [quizSettings, setQuizSettings] = useState<QuizSettings>(DEFAULT_PREFS);
   const [isPractice, setIsPractice] = useState(false);
   const [startedAt, setStartedAt] = useState(Date.now());
+  // Time counted before this sitting (from a resumed snapshot) and when this sitting began.
+  const [priorElapsedMs, setPriorElapsedMs] = useState(0);
+  const [sittingStartedAt, setSittingStartedAt] = useState(Date.now());
   const [snapshot, setSnapshot] = useState<QuizSnapshot | null>(null);
 
   const [finalAnswers, setFinalAnswers] = useState<QuizAnswer[]>([]);
   const [previousScore, setPreviousScore] = useState<number | null>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
   const [scheduleNote, setScheduleNote] = useState<string | null>(null);
+
+  const weaknessInfo = useMemo<WeaknessInfo>(() => ({ lapses, mistakes: countMistakes(mistakes) }), [lapses, mistakes]);
 
   useEffect(() => {
     try {
@@ -101,16 +120,12 @@ export default function QuizPage() {
       StorageService.getMistakeLogs().catch(() => [] as MistakeLog[]),
       StorageService.getLapseCounts().catch(() => new Map<string, number>()),
     ])
-      .then(([nextFolders, words, results, mistakeLogs, lapses]) => {
+      .then(([nextFolders, words, results, mistakeLogs, lapseCounts]) => {
         setFolders(nextFolders);
         setVocabularies(words);
         setHistory(results);
         setMistakes(mistakeLogs);
-        const mistakeCounts = new Map<string, number>();
-        for (const log of mistakeLogs) {
-          if (!log.resolved && log.vocabularyId) mistakeCounts.set(log.vocabularyId, (mistakeCounts.get(log.vocabularyId) || 0) + 1);
-        }
-        setWeaknessInfo({ lapses, mistakes: mistakeCounts });
+        setLapses(lapseCounts);
         setSnapshot(readSnapshot(words));
       })
       .catch((error) => setLoadError(error instanceof Error ? error.message : 'Unable to load quiz data.'))
@@ -123,12 +138,17 @@ export default function QuizPage() {
     else window.localStorage.removeItem(SESSION_KEY);
   };
 
-  const beginSession = (nextQuestions: QuizQuestion[], answers: QuizAnswer[], practice: boolean, ids: string[], started: number, settings: Pick<QuizPrefs, 'source' | 'format' | 'applyToSchedule'>) => {
+  /** Time spent answering so far: earlier sittings of a resumed quiz plus this one. */
+  const activeElapsed = () => priorElapsedMs + (Date.now() - sittingStartedAt);
+
+  const beginSession = (nextQuestions: QuizQuestion[], answers: QuizAnswer[], practice: boolean, ids: string[], started: number, settings: QuizSettings, elapsedBefore = 0) => {
     setQuestions(nextQuestions);
     setInitialAnswers(answers);
     setIsPractice(practice);
     setFolderIds(ids);
     setStartedAt(started);
+    setPriorElapsedMs(elapsedBefore);
+    setSittingStartedAt(Date.now());
     setQuizSettings(settings);
     setStep('session');
   };
@@ -161,7 +181,7 @@ export default function QuizPage() {
     }
 
     const started = Date.now();
-    persistSnapshot({ questions: generated, answers: [], folderIds: options.folderIds, startedAt: started, ...settings });
+    persistSnapshot({ questions: generated, answers: [], folderIds: options.folderIds, startedAt: started, elapsedMs: 0, ...settings });
     beginSession(generated, [], false, options.folderIds, started, settings);
   };
 
@@ -177,12 +197,12 @@ export default function QuizPage() {
       format: snapshot.format || prefs.format,
       // Before the explicit opt-in existed, quiz attempts always updated SRS.
       applyToSchedule: snapshot.applyToSchedule ?? true,
-    });
+    }, snapshot.elapsedMs ?? 0);
   };
 
   const handleProgress = (answers: QuizAnswer[]) => {
     if (isPractice) return;
-    persistSnapshot({ questions, answers: toSnapshotAnswers(answers), folderIds, startedAt, ...quizSettings });
+    persistSnapshot({ questions, answers: toSnapshotAnswers(answers), folderIds, startedAt, elapsedMs: activeElapsed(), ...quizSettings });
   };
 
   const handleExit = () => {
@@ -192,7 +212,7 @@ export default function QuizPage() {
   const handleCompleteQuiz = async (answers: QuizAnswer[]): Promise<void> => {
     const correctCount = answers.filter((answer) => answer.isCorrect).length;
     const wrong = answers.filter((answer) => !answer.isCorrect);
-    setElapsedMs(Date.now() - startedAt);
+    setElapsedMs(activeElapsed());
     const comparableHistory = history.find((result) =>
       result.quizSource === quizSettings.source && result.quizFormat === quizSettings.format &&
       result.totalQuestions === answers.length &&
@@ -218,19 +238,21 @@ export default function QuizPage() {
       })), reviewOutcomes);
       persistSnapshot(null);
       setHistory((current) => [result, ...current]);
-      if (quizSettings.applyToSchedule) window.dispatchEvent(new Event('vocabmaster:study-activity-updated'));
+      // A saved quiz counts toward the streak and today's activity whatever the schedule setting.
+      window.dispatchEvent(new Event(STUDY_ACTIVITY_EVENT));
 
-      // Answering a previously missed word correctly clears its open mistakes.
-      if (quizSettings.applyToSchedule) {
-        const correctIds = new Set(answers.filter((answer) => answer.isCorrect).map((answer) => answer.question.vocab.id));
-        const toResolve = mistakes.filter((log) => !log.resolved && log.vocabularyId && correctIds.has(log.vocabularyId));
-        if (toResolve.length > 0) {
-          void Promise.all(toResolve.map((log) => StorageService.resolveMistakeLog(log.id)))
-            .then(() => StorageService.getMistakeLogs())
-            .then(setMistakes)
-            .catch(() => undefined);
-        }
-      }
+      // A previously missed word answered correctly leaves the weak list, as the Weak Words page promises.
+      const correctIds = new Set(answers.filter((answer) => answer.isCorrect).map((answer) => answer.question.vocab.id));
+      const toResolve = mistakes.filter((log) => !log.resolved && log.vocabularyId && correctIds.has(log.vocabularyId));
+      void Promise.all(toResolve.map((log) => StorageService.resolveMistakeLog(log.id)))
+        .catch(() => undefined)
+        // This quiz also logged new mistakes, so the weak-word pool is reloaded for the next quiz.
+        .then(async () => {
+          const [logs, lapseCounts] = await Promise.all([StorageService.getMistakeLogs(), StorageService.getLapseCounts()]);
+          setMistakes(logs);
+          setLapses(lapseCounts);
+        })
+        .catch(() => undefined);
 
       if (quizSettings.applyToSchedule) {
         try {
@@ -281,6 +303,7 @@ export default function QuizPage() {
             weaknessInfo={weaknessInfo}
             resume={snapshot ? { answered: snapshot.answers.length, total: snapshot.questions.length } : null}
             initialPrefs={prefs}
+            initialFolderIds={folderIds}
             onResume={handleResume}
             onDiscardResume={() => persistSnapshot(null)}
             onStartQuiz={(options) => void handleStartQuiz(options)}
@@ -289,7 +312,7 @@ export default function QuizPage() {
 
         {step === 'session' && (
           <QuizSession
-            key={`${isPractice}-${startedAt}`}
+            key={`${isPractice}-${sittingStartedAt}`}
             questions={questions}
             initialAnswers={initialAnswers}
             onProgress={handleProgress}

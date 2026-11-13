@@ -41,6 +41,7 @@ export default function LibraryPage() {
   const [sharingFolder, setSharingFolder] = useState<Folder | null>(null);
   const [folderPendingDelete, setFolderPendingDelete] = useState<Folder | null>(null);
   const [folderDeleteMessage, setFolderDeleteMessage] = useState('');
+  const [wordPendingDelete, setWordPendingDelete] = useState<Vocabulary | null>(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
 
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -77,10 +78,21 @@ export default function LibraryPage() {
     setSubscriptions(nextSubscriptions);
   };
 
+  const loadLibrary = async () => {
+    setLoadError(null);
+    try {
+      await refreshData();
+    } catch (error) {
+      setLoadError(error instanceof Error ? error.message : 'Unable to load your library.');
+    } finally {
+      setMounted(true);
+    }
+  };
+
   useEffect(() => {
-    void refreshData()
-      .catch((error) => setLoadError(error instanceof Error ? error.message : 'Unable to load your library.'))
-      .finally(() => setMounted(true));
+    void loadLibrary();
+    // Runs once on mount; loadLibrary reads nothing that changes afterwards.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const sharedFolders = useMemo(() => {
@@ -176,28 +188,48 @@ export default function LibraryPage() {
     }
   };
 
-  const handleDeleteVocab = async (id: string) => {
-    const word = vocabularies.find((item) => item.id === id);
-    if (!word) return;
+  const deleteVocab = async (word: Vocabulary) => {
     try {
-      await StorageService.deleteVocabulary(id);
+      await StorageService.deleteVocabulary(word.id);
       await refreshData();
-      // No confirmation dialog: deleting is reversible for a few seconds, keeping learning progress.
+      // A word that was never studied has nothing to lose, so it can be put back with one tap.
+      const restorable = word.status === 'new';
       setToast({
         id: Date.now(),
         message: `Deleted "${word.word}"`,
-        actionLabel: 'Undo',
-        onAction: async () => {
-          try {
-            await StorageService.addVocabulary({ ...word });
-            await refreshData();
-          } catch (error) {
-            setToast({ id: Date.now(), message: error instanceof Error ? error.message : 'Unable to restore the word.' });
+        actionLabel: restorable ? 'Undo' : undefined,
+        onAction: restorable
+          ? async () => {
+            try {
+              await StorageService.addVocabulary({ ...word });
+              await refreshData();
+            } catch (error) {
+              setToast({ id: Date.now(), message: error instanceof Error ? error.message : 'Unable to restore the word.' });
+            }
           }
-        },
+          : undefined,
       });
     } catch (error) {
       setToast({ id: Date.now(), message: error instanceof Error ? error.message : 'Unable to delete vocabulary.' });
+    }
+  };
+
+  const handleDeleteVocab = (id: string) => {
+    const word = vocabularies.find((item) => item.id === id);
+    if (!word) return;
+    // Studied words carry review history that cannot be brought back, so ask first.
+    if (word.status === 'new') void deleteVocab(word);
+    else setWordPendingDelete(word);
+  };
+
+  const confirmDeleteWord = async () => {
+    if (!wordPendingDelete) return;
+    setConfirmBusy(true);
+    try {
+      await deleteVocab(wordPendingDelete);
+      setWordPendingDelete(null);
+    } finally {
+      setConfirmBusy(false);
     }
   };
 
@@ -218,7 +250,12 @@ export default function LibraryPage() {
   return (
     <Shell>
       <div className="space-y-6">
-        {loadError && <p role="alert" className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">{loadError}</p>}
+        {loadError && (
+          <p role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
+            <span>{loadError}</span>
+            <button type="button" onClick={() => { setMounted(false); void loadLibrary(); }} className="rounded-lg bg-white px-3 py-1.5 text-xs font-bold text-rose-700 ring-1 ring-rose-200 hover:bg-rose-100">Try again</button>
+          </p>
+        )}
         <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-600">Your study collection</p>
@@ -249,10 +286,12 @@ export default function LibraryPage() {
           </div>
           <div className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600"><CheckCircle2 className="h-5 w-5" /></span>
-            <div><p className="text-xs font-medium text-slate-500">Mastered</p><p className="text-xl font-bold text-slate-900">{masteredCount}</p></div>
+            <div><p className="text-xs font-medium text-slate-500">Long-term review</p><p className="text-xl font-bold text-slate-900">{masteredCount}</p></div>
           </div>
         </section>
 
+        {/* A failed load shows the retry notice above instead of an empty "add your first word" screen. */}
+        {!loadError && (
         <div className="grid grid-cols-1 items-start gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
           <details className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:hidden">
             <summary className="cursor-pointer list-none text-sm font-semibold text-slate-800">
@@ -312,6 +351,7 @@ export default function LibraryPage() {
             />
           </div>
         </div>
+        )}
 
         <Suspense fallback={null}>
           <SearchParamBridge onChange={setExternalSearch} onFolder={setSelectedFolderId} />
@@ -326,6 +366,7 @@ export default function LibraryPage() {
             onChanged={() => void refreshData().catch(() => undefined)}
           />
         )}
+        {wordPendingDelete && <ConfirmDialog title={`Delete “${wordPendingDelete.word}”?`} message="This word has been studied, so its review history and schedule will be removed for good." confirmLabel="Delete word" destructive busy={confirmBusy} onConfirm={() => void confirmDeleteWord()} onCancel={() => setWordPendingDelete(null)} />}
         {folderPendingDelete && <ConfirmDialog title="Delete folder?" message={folderDeleteMessage} confirmLabel="Delete folder" destructive busy={confirmBusy} onConfirm={() => void confirmDeleteFolder()} onCancel={() => setFolderPendingDelete(null)} />}
 
         {/* Add/Edit Modal */}

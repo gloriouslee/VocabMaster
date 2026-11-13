@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Compass, RefreshCw, Search } from 'lucide-react';
 import { Shell } from '@/components/layout/Shell';
@@ -47,17 +47,22 @@ export default function ExplorePage() {
     return () => clearTimeout(timer);
   }, [search]);
 
+  // Each search gets a number so a slow earlier response can never overwrite a newer one.
+  const requestRef = useRef(0);
   const loadFirstPage = useCallback(async () => {
+    const request = ++requestRef.current;
     setIsLoading(true);
     setError(null);
     try {
       const page = await ExploreService.list({ search: query, level, sort, limit: PAGE_SIZE });
+      if (request !== requestRef.current) return;
       setItems(page);
       setHasMore(page.length === PAGE_SIZE);
     } catch (loadError) {
+      if (request !== requestRef.current) return;
       setError(loadError instanceof Error ? loadError.message : 'Unable to load collections.');
     } finally {
-      setIsLoading(false);
+      if (request === requestRef.current) setIsLoading(false);
     }
   }, [query, level, sort]);
 
@@ -77,21 +82,25 @@ export default function ExplorePage() {
   }, [tab]);
 
   const loadMore = async () => {
+    const request = requestRef.current;
     setIsLoading(true);
     try {
       const page = await ExploreService.list({ search: query, level, sort, limit: PAGE_SIZE, offset: items.length });
+      if (request !== requestRef.current) return;
       setItems((current) => [...current, ...page]);
       setHasMore(page.length === PAGE_SIZE);
     } catch (loadError) {
+      if (request !== requestRef.current) return;
       setError(loadError instanceof Error ? loadError.message : 'Unable to load more collections.');
     } finally {
-      setIsLoading(false);
+      if (request === requestRef.current) setIsLoading(false);
     }
   };
 
   const syncOne = async (subscription: MySubscription) => {
     setSyncing(subscription.collectionId);
     setNotice(null);
+    setError(null);
     try {
       const { added } = await ExploreService.sync(subscription.collectionId);
       setNotice(added > 0 ? `Added ${added} new ${added === 1 ? 'word' : 'words'} from "${subscription.title}".` : `"${subscription.title}" is already up to date.`);
@@ -169,7 +178,7 @@ export default function ExplorePage() {
               </div>
             ) : (
               <>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <div aria-busy={isLoading} className={`grid grid-cols-1 gap-4 transition-opacity sm:grid-cols-2 lg:grid-cols-3 ${isLoading ? 'opacity-50' : ''}`}>
                   {items.map((collection) => <CollectionCard key={collection.id} collection={collection} />)}
                 </div>
                 {hasMore && (

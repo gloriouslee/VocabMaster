@@ -31,8 +31,8 @@ export function Toast({ toast, onDismiss, durationMs = 8000 }: ToastProps) {
 
   return (
     <div role="status" aria-live="polite" className="fixed inset-x-0 bottom-20 z-50 flex justify-center px-4 md:bottom-6">
-      <div className="animate-fade-in flex max-w-md items-center gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white shadow-xl">
-        <span className="min-w-0 flex-1 truncate">{toast.message}</span>
+      <div className="animate-fade-in flex max-w-md items-start gap-3 rounded-xl bg-slate-900 px-4 py-3 text-sm text-white shadow-xl">
+        <span className="min-w-0 flex-1 break-words leading-relaxed">{toast.message}</span>
         {toast.actionLabel && toast.onAction && (
           <button
             type="button"

@@ -15,6 +15,8 @@ const ITEMS = [
 /** Bottom tab bar for small screens; "More" opens the full menu drawer. */
 export function MobileNav({ onMore }: { onMore: () => void }) {
   const pathname = usePathname();
+  // Pages reached only through the drawer light up the "More" tab instead.
+  const moreActive = !ITEMS.some((item) => item.href === pathname);
 
   return (
     <nav aria-label="Primary" className="fixed inset-x-0 bottom-0 z-30 flex border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] md:hidden">
@@ -32,7 +34,7 @@ export function MobileNav({ onMore }: { onMore: () => void }) {
           </Link>
         );
       })}
-      <button type="button" onClick={onMore} className="flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold text-slate-500">
+      <button type="button" onClick={onMore} aria-haspopup="dialog" className={`flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5 text-[11px] font-semibold ${moreActive ? 'text-blue-600' : 'text-slate-500'}`}>
         <Menu className="h-5 w-5" />
         More
       </button>

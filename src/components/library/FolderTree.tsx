@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   Folder as FolderIcon,
   FolderPlus,
@@ -59,8 +59,12 @@ export function FolderTree({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
 
+  // Only folders seen for the first time open automatically; ones the learner collapsed stay collapsed.
+  const knownFolderIds = useRef(new Set(folders.map((folder) => folder.id)));
   useEffect(() => {
-    setExpandedFolderIds((previous) => new Set([...previous, ...folders.map((folder) => folder.id)]));
+    const fresh = folders.filter((folder) => !knownFolderIds.current.has(folder.id)).map((folder) => folder.id);
+    folders.forEach((folder) => knownFolderIds.current.add(folder.id));
+    if (fresh.length > 0) setExpandedFolderIds((previous) => new Set([...previous, ...fresh]));
   }, [folders]);
 
   const toggleExpand = (id: string, e: React.MouseEvent) => {
@@ -137,8 +141,11 @@ export function FolderTree({
                 aria-label={`Rename ${folder.name}`}
                 value={editingName}
                 onChange={(e) => setEditingName(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSaveRename(folder.id)}
-                onBlur={() => handleSaveRename(folder.id)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveRename(folder.id);
+                  if (e.key === 'Escape') setEditingId(null);
+                }}
+                onBlur={(e) => { if (document.body.contains(e.currentTarget)) handleSaveRename(folder.id); }}
                 autoFocus
                 onClick={(e) => e.stopPropagation()}
                 className="px-2 py-0.5 text-xs border border-blue-400 rounded outline-none text-slate-900 bg-white"
@@ -173,7 +180,7 @@ export function FolderTree({
           {/* Quick Action buttons */}
           <div
             className={`shrink-0 items-center space-x-1 ${
-              isSelected ? 'flex' : 'hidden sm:group-hover:flex'
+              isSelected ? 'flex' : 'hidden sm:group-hover:flex sm:group-focus-within:flex'
             }`}
             onClick={(e) => e.stopPropagation()}
           >

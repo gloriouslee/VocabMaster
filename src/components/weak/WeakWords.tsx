@@ -93,7 +93,8 @@ export function WeakWords({ vocabularies, folders, mistakes, lapses, onPracticeQ
                     <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
                       {forgot > 0 && <span className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-700">Forgot {forgot}× in flashcards</span>}
                       {missed > 0 && <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-800">Missed {missed}× in quizzes</span>}
-                      {word.easeFactor < 2 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">Hard for you</span>}
+                      {word.easeFactor < 2.25 && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600">Hard for you</span>}
+                      {word.status !== 'new' && new Date(word.nextReviewAt).getTime() <= Date.now() && <span className="rounded-full bg-indigo-50 px-2 py-0.5 text-indigo-700">Overdue</span>}
                     </div>
                     {lastWrong && <p className="text-xs text-slate-500">Last wrong answer: <span className="font-semibold text-rose-600">{lastWrong}</span></p>}
                   </div>

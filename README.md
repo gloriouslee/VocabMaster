@@ -51,7 +51,8 @@ Reports are stored in `collection_reports`; review them in the Supabase dashboar
 
 ## Tests
 
-`npm test` runs the unit tests and the database test; `npm run typecheck` runs TypeScript.
+`npm test` runs the unit tests and the database test; `npm run typecheck` runs TypeScript and
+`npm run lint` runs ESLint with the Next.js rules (`.eslintrc.json`). CI runs all three plus the build.
 
 ## Study scheduling update (2026-11-02)
 

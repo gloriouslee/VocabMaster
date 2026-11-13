@@ -164,8 +164,9 @@ function CollectionView() {
       <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
           <h2 className="text-sm font-bold text-slate-900">Preview</h2>
-          <span className="text-xs text-slate-500">First {Math.min(words.length, PREVIEW_WORDS)} of {detail.wordCount} words</span>
+          {words.length > 0 && <span className="text-xs text-slate-500">First {Math.min(words.length, PREVIEW_WORDS)} of {detail.wordCount} words</span>}
         </div>
+        {words.length === 0 && <p className="px-6 py-6 text-center text-xs text-slate-500">No words are available to preview right now.</p>}
         <ul className="divide-y divide-slate-100">
           {words.map((word) => (
             <li key={word.position} className="px-6 py-3">

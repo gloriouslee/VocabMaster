@@ -6,6 +6,25 @@ import { normalizeWord } from './normalizeWord';
 export const MAX_IMPORT_FILE_BYTES = 20 * 1024 * 1024;
 export const MAX_IMPORT_ROWS = 10_000;
 
+/** Maps English and Vietnamese part-of-speech names (and common abbreviations) to the app's word types. */
+export function normalizeWordType(raw: string): WordType {
+  const lower = raw.trim().toLowerCase();
+  if (!lower) return 'other';
+  if (/^(danh từ|danh tu|dt\b)/.test(lower)) return 'noun';
+  if (/^(động từ|dong tu|đt\b)/.test(lower)) return 'verb';
+  if (/^(tính từ|tinh tu|tt\b)/.test(lower)) return 'adjective';
+  if (/^(trạng từ|trang tu|phó từ|pho tu|trt\b)/.test(lower)) return 'adverb';
+  if (/^(cụm từ|cum tu)/.test(lower)) return 'phrase';
+  if (/^(thành ngữ|thanh ngu)/.test(lower)) return 'idiom';
+  if (lower.includes('phrase')) return 'phrase';
+  if (lower.includes('idiom')) return 'idiom';
+  if (lower.startsWith('adj')) return 'adjective';
+  if (lower.startsWith('adv')) return 'adverb';
+  if (lower.startsWith('n')) return 'noun';
+  if (lower.startsWith('v')) return 'verb';
+  return 'other';
+}
+
 export async function parseImportFile(
   file: File,
   existingVocabularies: Vocabulary[]
@@ -49,14 +68,7 @@ export async function parseImportFile(
     // Word type is optional in many source lists; use a neutral fallback instead of rejecting the row.
     let normalizedWordType: WordType = 'other';
     if (rawWordType) {
-      const lower = rawWordType.toLowerCase();
-      if (lower.startsWith('n')) normalizedWordType = 'noun';
-      else if (lower.startsWith('v')) normalizedWordType = 'verb';
-      else if (lower.startsWith('adj')) normalizedWordType = 'adjective';
-      else if (lower.startsWith('adv')) normalizedWordType = 'adverb';
-      else if (lower.includes('phrase')) normalizedWordType = 'phrase';
-      else if (lower.includes('idiom')) normalizedWordType = 'idiom';
-      else normalizedWordType = 'other';
+      normalizedWordType = normalizeWordType(rawWordType);
     }
 
     const lowerWord = normalizeWord(word);

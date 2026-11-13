@@ -42,6 +42,14 @@ export const SOURCE_LABELS: Record<QuizSource, string> = {
   mastered: 'Check long-term review words',
 };
 
+/** Question-count choices offered in the quiz setup (0 = every matching word). */
+export const COUNT_OPTIONS = [5, 10, 15, 20, 30, 0] as const;
+
+/** Smallest question-count option that covers `wordCount` words, or "all" (0) when none is large enough. */
+export function quizCountFor(wordCount: number): number {
+  return COUNT_OPTIONS.find((option) => option > 0 && option >= wordCount) ?? 0;
+}
+
 export const TYPE_LABELS: Record<QuizQuestionType, string> = {
   mcq: 'Multiple choice',
   reverse: 'Reverse translation',

@@ -19,7 +19,7 @@ export function DueForecast({ days }: { days: ForecastDay[] }) {
         <span className="text-xs font-semibold text-slate-500">{total} total</span>
       </div>
 
-      <ul className="grid grid-cols-8 items-end gap-2" aria-label="Cards due per day">
+      <ul className="grid grid-cols-8 items-end gap-1 sm:gap-2" aria-label="Cards due per day">
         {days.map((day, index) => (
           <li key={`${day.label}-${index}`} className="flex flex-col items-center gap-1 text-center">
             <span className="text-[11px] font-bold text-slate-700">{day.count}</span>
@@ -29,7 +29,10 @@ export function DueForecast({ days }: { days: ForecastDay[] }) {
                 style={{ height: `${Math.max(day.count > 0 ? 6 : 0, Math.round((day.count / max) * 100))}%` }}
               />
             </div>
-            <span className="text-[10px] font-medium text-slate-500">{day.label}</span>
+            <span className="text-[10px] font-medium text-slate-500" aria-label={day.label}>
+              <span className="sm:hidden">{day.shortLabel}</span>
+              <span className="hidden sm:inline">{day.label}</span>
+            </span>
           </li>
         ))}
       </ul>

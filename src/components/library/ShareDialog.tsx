@@ -17,6 +17,7 @@ import {
   validateShareForm,
 } from '@/lib/explore';
 import { ConfirmDialog } from '@/components/common/ConfirmDialog';
+import { useModalBehavior } from '@/components/common/useModalBehavior';
 
 interface ShareDialogProps {
   folder: { id: string; name: string };
@@ -48,6 +49,7 @@ export function ShareDialog({ folder, wordCount, existing, onClose, onChanged }:
   const [saved, setSaved] = useState<MyCollection | null>(null);
   const [copied, setCopied] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const panelRef = useModalBehavior<HTMLDivElement>(() => { if (!isBusy) onClose(); });
 
   const isShared = existing !== null && existing.visibility !== 'private';
 
@@ -99,8 +101,8 @@ export function ShareDialog({ folder, wordCount, existing, onClose, onChanged }:
   const inputClass = 'mt-1 block w-full rounded-xl border border-slate-200 px-3 py-2 text-sm font-normal text-slate-800 outline-none focus:border-blue-400';
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-slate-900/50 p-4 sm:items-center" role="dialog" aria-modal="true" aria-label={`Share ${folder.name}`}>
-      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+    <div className="fixed inset-0 z-50 flex items-end justify-center overflow-y-auto bg-slate-900/50 p-4 sm:items-center" onClick={() => { if (!isBusy) onClose(); }}>
+      <div ref={panelRef} role="dialog" aria-modal="true" aria-label={`Share ${folder.name}`} tabIndex={-1} onClick={(event) => event.stopPropagation()} className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl outline-none">
         <div className="mb-4 flex items-start justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-slate-900">{isShared ? 'Manage shared collection' : 'Share this folder'}</h2>

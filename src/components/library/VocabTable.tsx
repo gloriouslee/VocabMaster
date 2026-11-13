@@ -40,8 +40,10 @@ const statusLabels: Record<VocabStatus, string> = {
 
 const PAGE_SIZE = 50;
 
-function formatDue(iso: string): string {
-  const days = Math.ceil((new Date(iso).getTime() - Date.now()) / 86_400_000);
+function formatDue(vocab: Vocabulary): string {
+  // A new word's review date is just its creation time; it is not "due" until it has been studied.
+  if (vocab.status === 'new') return 'Not studied yet';
+  const days = Math.ceil((new Date(vocab.nextReviewAt).getTime() - Date.now()) / 86_400_000);
   if (days <= 0) return 'Due now';
   return days === 1 ? 'Review in 1 day' : `Review in ${days} days`;
 }
@@ -283,7 +285,7 @@ export function VocabTable({
                         ? <span title={folderPaths.get(vocab.folderId)} className="inline-flex max-w-[190px] whitespace-normal break-words rounded-lg bg-slate-100 px-2.5 py-1 text-xs font-medium leading-tight text-slate-600">{folderPaths.get(vocab.folderId)}</span>
                         : <span className="text-xs text-slate-500">Uncategorized</span>}
                     </td>
-                    <td className="px-5 py-4">{getStatusBadge(vocab.status)}<p className="mt-1 text-[11px] text-slate-500">{formatDue(vocab.nextReviewAt)}</p></td>
+                    <td className="px-5 py-4">{getStatusBadge(vocab.status)}<p className="mt-1 text-[11px] text-slate-500">{formatDue(vocab)}</p></td>
                     <td className="px-5 py-4">
                       <div className="flex justify-end gap-1.5">
                         <button onClick={() => onEditWord(vocab)} aria-label={`Edit ${vocab.word}`} title="Edit word" className="rounded-lg p-2 text-slate-400 hover:bg-blue-50 hover:text-blue-600"><Edit className="h-4 w-4" /></button>

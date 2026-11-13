@@ -49,7 +49,9 @@ export function Header({ stats, userEmail, profile, onSignOut, onMenuClick }: He
               </span>
             </Link>
             <button
+              type="button"
               onClick={onSignOut}
+              aria-label="Sign out"
               className="p-1 hover:bg-slate-200 rounded-lg text-slate-500 transition-colors"
               title="Sign Out"
             >
